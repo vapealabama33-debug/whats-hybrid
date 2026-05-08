@@ -43,3 +43,10 @@ coverage/
 tmp/
 temp/
 *.tmp
+
+# Release artifacts (gerados via zip — não commitar 2-3MB binários)
+whatshybrid-pro-v*.zip
+*.zip
+
+# Lock file gerado pelo runner (JobsRunner)
+.jobs_runner.lock
