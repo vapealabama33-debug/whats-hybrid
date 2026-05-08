@@ -24,6 +24,35 @@
   const FALLBACK_COUNT = 2; // AI-003: Max examples to return when no keyword matches (conservative fallback)
   const WHL_DEBUG = (typeof localStorage !== 'undefined' && localStorage.getItem('whl_debug') === 'true');
 
+  // v9.5.2: Synonym groups for keyword matching — words in the same group are treated as equivalent.
+  // Domain-specific (Brazilian Portuguese WhatsApp commerce) — extend as needed.
+  const SYNONYM_GROUPS = [
+    ['preco', 'preço', 'valor', 'custo', 'quanto', 'orcamento', 'orçamento'],
+    ['entrega', 'frete', 'envio', 'enviar', 'mandar', 'despachar', 'postagem'],
+    ['cancelar', 'cancelamento', 'desistir', 'devolver', 'devolucao', 'devolução', 'estorno'],
+    ['pagamento', 'pagar', 'pago', 'boleto', 'pix', 'cartao', 'cartão', 'credito', 'crédito'],
+    ['horario', 'horário', 'funciona', 'aberto', 'fechado', 'expediente', 'atendimento'],
+    ['estoque', 'disponivel', 'disponível', 'tem', 'existe', 'sobrou', 'restante'],
+    ['desconto', 'promocao', 'promoção', 'oferta', 'cupom', 'liquidacao', 'liquidação'],
+    ['garantia', 'troca', 'defeito', 'problema', 'quebrado', 'estragado', 'reclamar', 'reclamacao'],
+    ['endereco', 'endereço', 'localizacao', 'localização', 'onde', 'rua', 'cep'],
+    ['contato', 'telefone', 'whatsapp', 'celular', 'numero', 'número', 'falar']
+  ];
+
+  // Build O(1) lookup: word → canonical token (first word of group)
+  const SYNONYM_LOOKUP = (() => {
+    const map = new Map();
+    for (const group of SYNONYM_GROUPS) {
+      const canonical = group[0];
+      for (const word of group) map.set(word, canonical);
+    }
+    return map;
+  })();
+
+  function normalizeWord(w) {
+    return SYNONYM_LOOKUP.get(w) || w;
+  }
+
   // ============================================
   // SECURITY HELPERS
   // ============================================
@@ -220,9 +249,11 @@
       if (this.examples.length > MAX_EXAMPLES) {
         const beforeLen = this.examples.length;
         this.examples.sort((a, b) => {
-          // Ordena por score e usageCount
-          const scoreA = a.score + (a.usageCount * 0.1);
-          const scoreB = b.score + (b.usageCount * 0.1);
+          // v9.5.2: Quality weighted in pruning — edited examples (quality 10) survive over old much-used ones.
+          const qa = (Number(a.quality) || 9) >= 10 ? 1.5 : 1.0;
+          const qb = (Number(b.quality) || 9) >= 10 ? 1.5 : 1.0;
+          const scoreA = (a.score * qa) + (a.usageCount * 0.05);
+          const scoreB = (b.score * qb) + (b.usageCount * 0.05);
           return scoreB - scoreA;
         });
 
@@ -299,35 +330,48 @@
      */
     pickRelevantExamples(transcript, max = 3) {
       const examples = this.getAll();
-      
+
       if (!examples.length || !transcript) {
         return examples.slice(0, max);
       }
-      
+
       const transcriptLower = transcript.toLowerCase();
+      // v9.5.2: Normalize transcript words via synonym lookup so "preço" and "valor" match the same token.
       const transcriptWords = new Set(
-        transcriptLower.split(/\W+/).filter(w => w.length >= 4)
+        transcriptLower.split(/\W+/)
+          .filter(w => w.length >= 4)
+          .map(normalizeWord)
       );
-      
-      // Calcula score de cada exemplo baseado em overlap de keywords
+
+      const now = Date.now();
+      const DAY_MS = 86400000;
+
+      // v9.5.2: Multi-factor scoring — keyword overlap (synonym-aware) × quality × recency.
       const scored = examples.map(ex => {
         const userText = (ex.user || ex.input || '').toLowerCase();
-        const userWords = userText.split(/\W+/).filter(w => w.length >= 4);
-        
-        let score = 0;
+        const userWords = userText.split(/\W+/).filter(w => w.length >= 4).map(normalizeWord);
+
+        let keywordScore = 0;
         for (const word of userWords.slice(0, 18)) {
-          if (transcriptWords.has(word)) {
-            score += 1;
-          }
+          if (transcriptWords.has(word)) keywordScore += 1;
         }
-        
-        return { example: ex, score };
+
+        // Quality boost: edited examples (quality 10) get 50% bonus over plain approvals (quality 9).
+        const quality = Number(ex.quality) || 9;
+        const qualityMultiplier = quality >= 10 ? 1.5 : 1.0;
+
+        // Recency decay: linear over 180 days, floor at 0.4 so old examples still count.
+        const ageInDays = ex.createdAt ? Math.max(0, (now - ex.createdAt) / DAY_MS) : 0;
+        const recencyMultiplier = Math.max(0.4, 1 - (ageInDays / 180) * 0.6);
+
+        const score = keywordScore * qualityMultiplier * recencyMultiplier;
+
+        return { example: ex, score, keywordScore };
       });
-      
-      // Ordena por score e retorna top N
+
       const relevant = scored
         .sort((a, b) => b.score - a.score)
-        .filter(s => s.score > 0)
+        .filter(s => s.keywordScore > 0)
         .slice(0, max)
         .map(s => s.example);
 
@@ -341,6 +385,18 @@
       }
 
       return relevant;
+    }
+
+    /**
+     * v9.5.2: Increments usage counter for an example after it has been picked.
+     * Wired from ai-suggestion-fixed.js so the most-helpful examples rise to the top over time.
+     */
+    async incrementUsage(exampleId) {
+      const ex = this.examples.find(e => e.id === exampleId);
+      if (!ex) return;
+      ex.usageCount = (Number(ex.usageCount) || 0) + 1;
+      ex.lastUsed = Date.now();
+      await this.save();
     }
 
     /**

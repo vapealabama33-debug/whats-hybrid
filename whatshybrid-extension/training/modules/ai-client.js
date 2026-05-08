@@ -129,30 +129,54 @@
     // v9.4.6: _callOpenAI_LEGACY_DISABLED REMOVIDO. Backend-Only AI.
 
     _buildSystemPrompt() {
-      const business = this.knowledgeBase.businessInfo || {};
-      const faqs = this.knowledgeBase.faqs || [];
-      
+      // v9.5.2: Prefer the full production prompt builder so simulation matches production behaviour.
+      try {
+        if (typeof window !== 'undefined'
+            && window.knowledgeBase
+            && typeof window.knowledgeBase.buildSystemPrompt === 'function') {
+          const fullPrompt = window.knowledgeBase.buildSystemPrompt({ persona: 'professional', businessContext: true });
+          if (fullPrompt && typeof fullPrompt === 'string' && fullPrompt.length > 0) {
+            return fullPrompt;
+          }
+        }
+      } catch (e) {
+        console.warn('[TrainingAIClient] knowledgeBase.buildSystemPrompt indisponível, usando fallback:', e?.message);
+      }
+
+      const business = this.knowledgeBase.businessInfo || this.knowledgeBase.business || {};
+      const faqs = this.knowledgeBase.faqs || this.knowledgeBase.faq || [];
+      const products = this.knowledgeBase.products || [];
+      const policies = this.knowledgeBase.policies || {};
+
       let prompt = 'Você é um assistente de atendimento ao cliente treinado para responder de forma profissional e útil.';
-      
-      if (business.name) {
-        prompt += `\n\nVocê trabalha para: ${business.name}`;
-      }
-      if (business.description) {
-        prompt += `\nSobre o negócio: ${business.description}`;
-      }
-      if (business.tone) {
-        prompt += `\nTom de comunicação: ${business.tone}`;
-      }
-      
+
+      if (business.name) prompt += `\n\nVocê trabalha para: ${business.name}`;
+      if (business.description) prompt += `\nSobre o negócio: ${business.description}`;
+      if (business.segment) prompt += `\nSegmento: ${business.segment}`;
+      if (business.hours) prompt += `\nHorário de atendimento: ${business.hours}`;
+      if (business.tone) prompt += `\nTom de comunicação: ${business.tone}`;
+
+      if (policies.payment) prompt += `\nPolítica de Pagamento: ${policies.payment}`;
+      if (policies.delivery) prompt += `\nPolítica de Entrega: ${policies.delivery}`;
+      if (policies.returns) prompt += `\nPolítica de Trocas/Devoluções: ${policies.returns}`;
+
       if (faqs.length > 0) {
         prompt += '\n\nFAQs importantes:';
-        faqs.slice(0, 5).forEach(faq => {
+        faqs.slice(0, 10).forEach(faq => {
           prompt += `\n- P: ${faq.question}\n  R: ${faq.answer}`;
         });
       }
-      
+
+      if (products.length > 0) {
+        prompt += '\n\nProdutos disponíveis:';
+        products.slice(0, 20).forEach(p => {
+          prompt += `\n- ${p.name}`;
+          if (p.price > 0) prompt += ` — R$ ${Number(p.price).toFixed(2)}`;
+          if (p.description) prompt += ` (${p.description})`;
+        });
+      }
+
       prompt += '\n\nResponda de forma concisa, profissional e útil. Se não souber algo, seja honesto.';
-      
       return prompt;
     }
 

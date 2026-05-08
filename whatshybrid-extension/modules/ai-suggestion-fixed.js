@@ -373,6 +373,10 @@
             }
           });
           fewShotLoaded = true;
+          // v9.5.2: Reinforce usage counter for selected examples so the system learns which examples actually help.
+          if (typeof fsl.incrementUsage === 'function') {
+            picked.forEach(ex => { if (ex?.id != null) fsl.incrementUsage(ex.id).catch(() => {}); });
+          }
         }
       } else {
         log('⚠️ FewShotLearning não disponível - exemplos de treinamento não serão usados');

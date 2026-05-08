@@ -262,6 +262,30 @@
         await this._processMessage(r.text, result.url);
       } catch (e) {
         this._hideStatus();
+        // v9.5.2: When the backend can't transcribe (e.g. OPENAI_API_KEY missing), offer Web Speech as a graceful fallback.
+        const detail = e?.backendDetail || e?.message || '';
+        const isOpenAIKeyMissing = /openai/i.test(detail) && /(key|chave)/i.test(detail);
+        if ((isOpenAIKeyMissing || e?.status >= 500)
+            && window.WHLSpeechToText
+            && window.WHLSpeechToText.isWebSpeechAvailable
+            && window.WHLSpeechToText.isWebSpeechAvailable()) {
+          this._toast('Servidor indisponível. Tentando transcrição local (Web Speech)...', 'warning');
+          this._showStatus('Aguardando fala (modo local)...');
+          this.stt.transcribeLive({
+            language: this.language,
+            onResult: ({ final, isFinal }) => {
+              if (isFinal && final) {
+                this._hideStatus();
+                this._processMessage(final, result.url);
+              }
+            },
+            onError: (liveErr) => {
+              this._hideStatus();
+              this._toast('Web Speech: ' + liveErr.message, 'error');
+            }
+          });
+          return;
+        }
         this._toast('Erro: ' + e.message, 'error');
       }
     }

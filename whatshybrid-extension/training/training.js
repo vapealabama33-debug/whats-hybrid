@@ -291,13 +291,19 @@ class TrainingApp {
 
     if (empty) empty.style.display = 'none';
 
-    grid.innerHTML = this.examples.map(ex => `
+    grid.innerHTML = this.examples.map(ex => {
+      const quality = Number(ex.quality) || 8;
+      const isEdited = ex.edited === true || quality >= 10;
+      const qualityBadge = isEdited
+        ? '<span class="quality-badge quality-edited" title="Editado pelo curador (qualidade máxima)">✏️ Editado</span>'
+        : `<span class="quality-badge quality-approved" title="Aprovado sem edição">${quality}/10</span>`;
+      const ageLabel = this.formatRelativeAge(ex.createdAt || ex.id);
+      return `
       <div class="example-card" data-id="${parseInt(ex.id) || 0}">
         <div class="example-header">
           <span class="example-category">${this.escapeHtml(ex.category || 'Geral')}</span>
           <div class="example-quality">
-            <span class="stars">${'★'.repeat(Math.round((ex.quality || 8) / 2))}</span>
-            <span>${ex.quality || 8}/10</span>
+            ${qualityBadge}
           </div>
         </div>
         <div class="example-input">${this.escapeHtml(ex.input || ex.user || '').substring(0, 150)}${(ex.input || ex.user || '').length > 150 ? '...' : ''}</div>
@@ -307,11 +313,12 @@ class TrainingApp {
             ${(ex.tags || []).slice(0, 4).map(tag => `<span class="example-tag">${this.escapeHtml(tag)}</span>`).join('')}
           </div>
           <div class="example-stats">
-            <span>📊 ${ex.usageCount || 0}x usado</span>
+            <span title="Vezes que este exemplo foi escolhido pela IA">📊 ${ex.usageCount || 0}x</span>
+            <span title="Quando foi criado">🕒 ${ageLabel}</span>
           </div>
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
 
     grid.removeEventListener('click', this._handleExampleClick);
     this._handleExampleClick = (e) => {
@@ -1037,6 +1044,25 @@ class TrainingApp {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  // v9.5.2: Format a Unix timestamp as a Portuguese relative-age label for the Curadoria cards.
+  formatRelativeAge(timestamp) {
+    const ts = Number(timestamp);
+    if (!ts || !Number.isFinite(ts)) return 'agora';
+    const diffMs = Date.now() - ts;
+    if (diffMs < 0) return 'agora';
+    const minutes = Math.floor(diffMs / 60000);
+    if (minutes < 1) return 'agora';
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}d`;
+    const months = Math.floor(days / 30);
+    if (months < 12) return `${months} ${months === 1 ? 'mês' : 'meses'}`;
+    const years = Math.floor(days / 365);
+    return `${years} ${years === 1 ? 'ano' : 'anos'}`;
   }
 
   // ============================================
