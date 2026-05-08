@@ -669,17 +669,19 @@ Responda de forma natural e profissional.`;
         if (window.fewShotLearning) {
           await window.fewShotLearning.addExample({
             input: context.content, // Pergunta do cliente
-            output: response.content, // Resposta aprovada
+            output: response.content, // Resposta aprovada (pode estar editada)
             category: theme.id,
             intent: theme.id,
-            quality: 9, // Alta qualidade (aprovado manualmente)
-            tags: [theme.id, 'simulation', 'approved'],
+            quality: response.edited ? 10 : 9, // Editado = qualidade ainda maior
+            edited: response.edited || false,
+            editedAt: response.editedAt || null,
+            tags: [theme.id, 'simulation', 'approved', ...(response.edited ? ['edited'] : [])],
             context: {
               theme: theme.name,
               profile: response.profile?.id,
               sessionId: this.state.sessionId
             },
-            source: 'neural_simulation'
+            source: response.edited ? 'neural_simulation_edited' : 'neural_simulation'
           });
 
           saved++;

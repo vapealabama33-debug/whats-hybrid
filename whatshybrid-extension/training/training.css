@@ -2208,3 +2208,21 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* ============================================
+   v9.5.1 — Edit Message Button (curadoria)
+   ============================================ */
+.btn-edit-msg {
+  background: rgba(245, 158, 11, 0.2);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #F59E0B;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-edit-msg:hover {
+  background: rgba(245, 158, 11, 0.3);
+  border-color: #F59E0B;
+}

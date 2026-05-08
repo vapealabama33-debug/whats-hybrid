@@ -1,13 +1,13 @@
 /**
- * 📄 Document Importer - Importação Inteligente de Documentos
- * Processa PDF, CSV, TXT e extrai conhecimento automaticamente
- * 
- * @version 1.0.0
+ * 📄 Document Importer - Importação de Documentos
+ * Processa CSV, TXT, JSON e extrai conhecimento automaticamente
+ *
+ * @version 9.5.1
  */
 
 class DocumentImporter {
   constructor() {
-    this.supportedFormats = ['pdf', 'csv', 'txt', 'json', 'xlsx'];
+    this.supportedFormats = ['csv', 'txt', 'json'];
     this.processingQueue = [];
     this.results = [];
   }
@@ -40,9 +40,6 @@ class DocumentImporter {
         break;
       case 'json':
         result = await this.processJSON(file);
-        break;
-      case 'pdf':
-        result = await this.processPDF(file);
         break;
       default:
         throw new Error(`Processador não implementado para: ${extension}`);
@@ -249,23 +246,6 @@ class DocumentImporter {
     }
 
     return { type: 'unknown', items: [data], count: 1 };
-  }
-
-  /**
-   * Processa PDF (extração básica de texto)
-   */
-  async processPDF(file) {
-    // PDF.js seria necessário para processamento real
-    // Por ora, retornamos instrução
-    console.warn('[DocumentImporter] PDF requer biblioteca PDF.js');
-    
-    return {
-      type: 'pdf',
-      items: [],
-      count: 0,
-      message: 'Para processar PDFs, instale a biblioteca PDF.js',
-      requiresLibrary: true
-    };
   }
 
   // ============================================
