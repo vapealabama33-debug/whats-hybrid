@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsHybrid - Treinamento de IA</title>
+    <link rel="stylesheet" href="training.css">
+</head>
+<body>
+    <div class="training-app">
+        <!-- Header -->
+        <header class="training-header">
+            <div class="header-left">
+                <img src="../icons/48.png" alt="Logo" class="logo">
+                <h1>WhatsHybrid <span class="badge">Treinamento IA</span></h1>
+            </div>
+            <div class="header-center">
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="searchInput" placeholder="Buscar exemplos, FAQs, produtos...">
+                </div>
+            </div>
+            <div class="header-right">
+                <button class="btn btn-secondary" id="btnImport">
+                    <span>📥</span> Importar
+                </button>
+                <button class="btn btn-secondary" id="btnExport">
+                    <span>📤</span> Exportar
+                </button>
+                <button class="btn btn-primary" id="btnSync">
+                    <span>🔄</span> Sincronizar
+                </button>
+                <div class="connection-status" id="connectionStatus">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Conectando...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+            <div class="stat-item">
+                <span class="stat-value" id="statExamples">0</span>
+                <span class="stat-label">Exemplos</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value" id="statFaqs">0</span>
+                <span class="stat-label">FAQs</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value" id="statProducts">0</span>
+                <span class="stat-label">Produtos</span>
+            </div>
+            <div class="stat-item highlight">
+                <span class="stat-value" id="statAccuracy">0%</span>
+                <span class="stat-label">Precisão</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value" id="statAutoLearn">0</span>
+                <span class="stat-label">Auto-aprendidos</span>
+            </div>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="tab-navigation">
+            <button class="tab-btn active" data-tab="simulation">
+                <span>🧠</span> Simulação
+            </button>
+            <button class="tab-btn" data-tab="examples">
+                <span>📚</span> Exemplos
+            </button>
+            <button class="tab-btn" data-tab="faqs">
+                <span>❓</span> FAQs
+            </button>
+            <button class="tab-btn" data-tab="products">
+                <span>🛍️</span> Produtos
+            </button>
+            <button class="tab-btn" data-tab="business">
+                <span>🏢</span> Negócio
+            </button>
+            <button class="tab-btn" data-tab="import">
+                <span>📄</span> Importar
+            </button>
+            <button class="tab-btn" data-tab="gaps">
+                <span>🎯</span> Gaps
+            </button>
+            <button class="tab-btn" data-tab="abtesting">
+                <span>🧪</span> A/B Test
+            </button>
+            <button class="tab-btn" data-tab="analytics">
+                <span>📊</span> Analytics
+            </button>
+            <button class="tab-btn" data-tab="voice">
+                <span>🎤</span> Voz
+            </button>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Tab: Simulação Neural -->
+            <div class="tab-content active" id="tabSimulation">
+                <!-- Header da Simulação -->
+                <div class="simulation-header">
+                    <div class="simulation-title">
+                        <h2>🧠 Simulação <span class="gradient-text">Neural</span></h2>
+                        <p>Conecte seus robôs e veja a mágica acontecer em tempo real.</p>
+                    </div>
+                    <div class="simulation-latency" id="simLatency">
+                        <span class="latency-label">LATÊNCIA:</span>
+                        <span class="latency-value">--</span>
+                    </div>
+                </div>
+
+                <!-- Ambiente de Simulação -->
+                <div class="simulation-environment">
+                    <div class="sim-env-header">
+                        <span class="sim-env-dot"></span>
+                        <span>Ambiente de <span class="gradient-text">Simulação Neural</span></span>
+                    </div>
+
+                    <div class="simulation-arena">
+                        <!-- Robô Executor (Esquerda) -->
+                        <div class="robot-panel executor-panel">
+                            <div class="robot-avatar">
+                                <div class="avatar-icon executor">🤖</div>
+                            </div>
+                            <div class="robot-config">
+                                <label class="config-label">PERFIL ATIVO</label>
+                                <select id="executorProfile" class="robot-select">
+                                    <option value="vendedor_senior">👔 Vendedor Sênior</option>
+                                    <option value="suporte_tecnico">🛠️ Suporte Técnico</option>
+                                    <option value="atendente_geral">🎯 Atendente Geral</option>
+                                </select>
+                            </div>
+                            <button class="btn-connect executor" id="btnConnectExecutor">
+                                <span>📱</span> CONECTAR WHATSAPP
+                            </button>
+                            <div class="robot-status">
+                                <span class="status-label">Status:</span>
+                                <span class="status-value" id="executorStatus">Aguardando...</span>
+                            </div>
+                        </div>
+
+                        <!-- Chat Central -->
+                        <div class="simulation-chat">
+                            <div class="chat-messages" id="simChatMessages">
+                                <div class="chat-empty">
+                                    <span>🚀</span>
+                                    <p>Selecione um tema e inicie a simulação</p>
+                                </div>
+                            </div>
+                            <div class="chat-controls">
+                                <div class="theme-selector">
+                                    <select id="simTheme" class="theme-select">
+                                        <option value="venda_abordagem">🎯 Melhores Abordagens de Venda</option>
+                                        <option value="quebra_objecoes">🛡️ Quebra de Objeções</option>
+                                        <option value="negociacao_preco">💰 Negociação de Preço</option>
+                                        <option value="pos_venda">🎁 Pós-Venda e Suporte</option>
+                                        <option value="cliente_dificil">😠 Cliente Difícil</option>
+                                        <option value="consistencia_memoria">🧠 Consistência e Memória</option>
+                                    </select>
+                                </div>
+                                <div class="sim-actions">
+                                    <button class="btn-sim btn-start" id="btnStartSim">▶️ Iniciar</button>
+                                    <button class="btn-sim btn-pause" id="btnPauseSim" disabled>⏸️ Pausar</button>
+                                    <button class="btn-sim btn-stop" id="btnStopSim" disabled>⏹️ Parar</button>
+                                    <button class="btn-sim btn-next" id="btnNextTurn" disabled>⏭️ Próximo</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Robô Simulador (Direita) -->
+                        <div class="robot-panel simulator-panel">
+                            <div class="robot-avatar">
+                                <div class="avatar-icon simulator">👤</div>
+                            </div>
+                            <div class="robot-config">
+                                <label class="config-label">PERFIL ATIVO</label>
+                                <select id="simulatorProfile" class="robot-select">
+                                    <option value="cliente_simulado">👤 Cliente Simulado</option>
+                                    <option value="cliente_dificil">😤 Cliente Difícil</option>
+                                    <option value="cliente_indeciso">🤔 Cliente Indeciso</option>
+                                    <option value="cliente_apressado">⏰ Cliente Apressado</option>
+                                </select>
+                            </div>
+                            <button class="btn-connect simulator" id="btnConnectSimulator">
+                                <span>📱</span> CONECTAR WHATSAPP
+                            </button>
+                            <div class="robot-status">
+                                <span class="status-label">Status:</span>
+                                <span class="status-value" id="simulatorStatus">Aguardando...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Seção de Marketing -->
+                <div class="simulation-marketing">
+                    <div class="marketing-badge">✨</div>
+                    <h3>Treine sua IA em <span class="gradient-text">Minutos</span>, não em Meses</h3>
+                    <p>Esqueça códigos complexos ou fluxogramas intermináveis. Com nosso painel intuitivo, você apenas "ensina" o que sua empresa faz, carrega seus PDFs ou catálogos, e a IA aprende instantaneamente.</p>
+                    <div class="marketing-features">
+                        <span class="feature">🚀 Sem Programação</span>
+                        <span class="feature">📄 Leitura de PDF/CSV</span>
+                        <span class="feature">🧠 Aprendizado Rápido</span>
+                    </div>
+                </div>
+
+                <!-- Curadoria de Respostas -->
+                <div class="curation-section" id="curationSection" style="display: none;">
+                    <div class="curation-header">
+                        <h3>✅ Curadoria de Respostas</h3>
+                        <p>Aprove ou rejeite as respostas geradas para treinar a IA de forma supervisionada.</p>
+                    </div>
+                    <div class="curation-list" id="curationList">
+                        <!-- Respostas pendentes serão inseridas aqui -->
+                    </div>
+                    <div class="curation-actions">
+                        <button class="btn btn-primary" id="btnSaveApproved" disabled>
+                            💾 Salvar Aprovadas para Aprendizado
+                        </button>
+                        <span class="curation-stats">
+                            <span id="approvedCount">0</span> aprovadas | 
+                            <span id="rejectedCount">0</span> rejeitadas
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Laboratório de Teste Rápido -->
+                <div class="quick-test-section">
+                    <h3>🧪 Laboratório de Teste Rápido</h3>
+                    <div class="quick-test-form">
+                        <input type="text" id="quickTestInput" placeholder="Digite uma pergunta para testar o conhecimento configurado acima..." class="quick-test-input">
+                        <button class="btn btn-primary" id="btnQuickTest">Testar</button>
+                    </div>
+                    <div class="quick-test-result" id="quickTestResult" style="display: none;">
+                        <div class="result-label">Resposta da IA:</div>
+                        <div class="result-content" id="quickTestContent"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Exemplos de Resposta -->
+            <div class="tab-content" id="tabExamples">
+                <div class="content-header">
+                    <h2>📚 Exemplos de Resposta (Few-Shot Learning)</h2>
+                    <p>Ensine a IA como responder mostrando exemplos de perguntas e respostas ideais.</p>
+                    <button class="btn btn-primary" id="btnAddExample">
+                        <span>➕</span> Novo Exemplo
+                    </button>
+                </div>
+
+                <div class="examples-grid" id="examplesGrid">
+                    <!-- Cards serão inseridos aqui -->
+                </div>
+
+                <div class="empty-state" id="emptyExamples" style="display: none;">
+                    <span class="empty-icon">📚</span>
+                    <h3>Nenhum exemplo cadastrado</h3>
+                    <p>Adicione exemplos de perguntas e respostas para treinar a IA</p>
+                </div>
+            </div>
+
+            <!-- Tab: FAQs -->
+            <div class="tab-content" id="tabFaqs">
+                <div class="content-header">
+                    <h2>❓ Perguntas Frequentes (FAQs)</h2>
+                    <p>Cadastre perguntas comuns e suas respostas para a IA responder automaticamente.</p>
+                    <button class="btn btn-primary" id="btnAddFaq">
+                        <span>➕</span> Nova FAQ
+                    </button>
+                </div>
+
+                <div class="faqs-list" id="faqsList">
+                    <!-- FAQs serão inseridas aqui -->
+                </div>
+
+                <div class="empty-state" id="emptyFaqs" style="display: none;">
+                    <span class="empty-icon">❓</span>
+                    <h3>Nenhuma FAQ cadastrada</h3>
+                    <p>Adicione perguntas frequentes para a IA responder automaticamente</p>
+                </div>
+            </div>
+
+            <!-- Tab: Produtos/Serviços -->
+            <div class="tab-content" id="tabProducts">
+                <div class="content-header">
+                    <h2>🛍️ Produtos e Serviços</h2>
+                    <p>Cadastre seus produtos e serviços para a IA fornecer informações precisas.</p>
+                    <button class="btn btn-primary" id="btnAddProduct">
+                        <span>➕</span> Novo Produto
+                    </button>
+                </div>
+
+                <div class="products-grid" id="productsGrid">
+                    <!-- Produtos serão inseridos aqui -->
+                </div>
+
+                <div class="empty-state" id="emptyProducts" style="display: none;">
+                    <span class="empty-icon">🛍️</span>
+                    <h3>Nenhum produto cadastrado</h3>
+                    <p>Adicione produtos e serviços para a IA informar corretamente</p>
+                </div>
+            </div>
+
+            <!-- Tab: Informações do Negócio -->
+            <div class="tab-content" id="tabBusiness">
+                <div class="content-header">
+                    <h2>🏢 Informações do Negócio</h2>
+                    <p>Configure informações gerais do seu negócio que a IA deve saber.</p>
+                </div>
+
+                <div class="business-form">
+                    <div class="form-section">
+                        <h3>📋 Dados Básicos</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Nome da Empresa</label>
+                                <input type="text" id="businessName" placeholder="Ex: Loja ABC">
+                            </div>
+                            <div class="form-group">
+                                <label>Segmento</label>
+                                <input type="text" id="businessSegment" placeholder="Ex: E-commerce, Serviços">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Descrição do Negócio</label>
+                            <textarea id="businessDescription" placeholder="Descreva brevemente o que sua empresa faz..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>📞 Contato e Atendimento</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Horário de Atendimento</label>
+                                <input type="text" id="businessHours" placeholder="Ex: Seg-Sex 9h às 18h">
+                            </div>
+                            <div class="form-group">
+                                <label>Tempo Médio de Resposta</label>
+                                <input type="text" id="businessResponseTime" placeholder="Ex: Até 2 horas">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Telefone</label>
+                                <input type="text" id="businessPhone" placeholder="(11) 99999-9999">
+                            </div>
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input type="email" id="businessEmail" placeholder="contato@empresa.com">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>💳 Formas de Pagamento</h3>
+                        <div class="checkbox-group" id="paymentMethods">
+                            <label class="checkbox-item">
+                                <input type="checkbox" value="pix"> PIX
+                            </label>
+                            <label class="checkbox-item">
+                                <input type="checkbox" value="cartao_credito"> Cartão de Crédito
+                            </label>
+                            <label class="checkbox-item">
+                                <input type="checkbox" value="cartao_debito"> Cartão de Débito
+                            </label>
+                            <label class="checkbox-item">
+                                <input type="checkbox" value="boleto"> Boleto
+                            </label>
+                            <label class="checkbox-item">
+                                <input type="checkbox" value="transferencia"> Transferência
+                            </label>
+                            <label class="checkbox-item">
+                                <input type="checkbox" value="parcelamento"> Parcelamento
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>🚚 Entrega e Frete</h3>
+                        <div class="form-group">
+                            <label>Política de Entrega</label>
+                            <textarea id="deliveryPolicy" placeholder="Ex: Entregamos em todo o Brasil. Prazo de 3-7 dias úteis..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Política de Frete Grátis</label>
+                            <input type="text" id="freeShipping" placeholder="Ex: Frete grátis para compras acima de R$ 200">
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>🔄 Trocas e Devoluções</h3>
+                        <div class="form-group">
+                            <label>Política de Trocas</label>
+                            <textarea id="returnPolicy" placeholder="Ex: Aceitamos trocas em até 30 dias. O produto deve estar na embalagem original..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>📝 Instruções Personalizadas para a IA</h3>
+                        <div class="form-group">
+                            <label>Instruções Especiais</label>
+                            <textarea id="customInstructions" placeholder="Ex: Sempre pergunte o nome do cliente. Nunca dê descontos sem autorização. Sempre ofereça nosso plano premium..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button class="btn btn-primary" id="btnSaveBusiness">
+                            <span>💾</span> Salvar Configurações
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Analytics -->
+            <div class="tab-content" id="tabAnalytics">
+                <div class="content-header">
+                    <h2>📊 Analytics de Treinamento</h2>
+                    <p>Acompanhe a performance e o aprendizado da IA.</p>
+                </div>
+
+                <div class="analytics-grid">
+                    <div class="analytics-card">
+                        <h3>📈 Performance Geral</h3>
+                        <div class="metric-large" id="overallScore">0%</div>
+                        <p>Score de Qualidade</p>
+                    </div>
+
+                    <div class="analytics-card">
+                        <h3>✅ Taxa de Aceitação</h3>
+                        <div class="metric-large" id="acceptanceRate">0%</div>
+                        <p>Sugestões aceitas sem edição</p>
+                    </div>
+
+                    <div class="analytics-card">
+                        <h3>⚡ Cache Hit Rate</h3>
+                        <div class="metric-large" id="cacheHitRate">0%</div>
+                        <p>Respostas do cache</p>
+                    </div>
+
+                    <div class="analytics-card">
+                        <h3>🎓 Auto-aprendizado</h3>
+                        <div class="metric-large" id="autoLearnedToday">0</div>
+                        <p>Exemplos aprendidos hoje</p>
+                    </div>
+                </div>
+
+                <div class="analytics-section">
+                    <h3>📊 Score por Categoria</h3>
+                    <div class="category-scores" id="categoryScores">
+                        <!-- Scores por categoria -->
+                    </div>
+                </div>
+
+                <div class="analytics-section">
+                    <h3>😊 Sentimento das Conversas</h3>
+                    <div class="sentiment-metrics" id="sentimentMetrics">
+                        <div class="sentiment-bar">
+                            <div class="sentiment-positive" id="sentimentPositive" style="width: 40%"></div>
+                            <div class="sentiment-neutral" id="sentimentNeutral" style="width: 40%"></div>
+                            <div class="sentiment-negative" id="sentimentNegative" style="width: 20%"></div>
+                        </div>
+                        <div class="sentiment-labels">
+                            <span>😊 Positivo: <span id="sentimentPositiveVal">40%</span></span>
+                            <span>😐 Neutro: <span id="sentimentNeutralVal">40%</span></span>
+                            <span>😞 Negativo: <span id="sentimentNegativeVal">20%</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analytics-section">
+                    <h3>🔔 Alertas e Insights</h3>
+                    <div class="alerts-list" id="alertsList">
+                        <!-- Alertas serão inseridos aqui -->
+                    </div>
+                </div>
+
+                <div class="analytics-section">
+                    <h3>📋 Top Intenções Detectadas</h3>
+                    <div class="intents-list" id="intentsList">
+                        <!-- Intenções serão inseridas aqui -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Treinamento por Voz -->
+            <div class="tab-content" id="tabVoice">
+                <div class="content-header">
+                    <h2>🎤 Treinamento por Voz</h2>
+                    <p>Converse diretamente com a IA via áudio ou texto. Valide respostas para melhorar o aprendizado.</p>
+                </div>
+                
+                <div id="voiceTrainingContainer" style="height: calc(100vh - 300px); min-height: 500px;">
+                    <!-- Interactive Training será inicializado aqui -->
+                </div>
+            </div>
+
+            <!-- Tab: Importar Documentos -->
+            <div class="tab-content" id="tabImport">
+                <div class="content-header">
+                    <h2>📄 Importação Inteligente de Documentos</h2>
+                    <p>Importe PDFs, CSVs, TXTs e conversas para treinar a IA automaticamente.</p>
+                </div>
+
+                <div class="import-sections">
+                    <!-- Área de Upload -->
+                    <div class="import-card">
+                        <h3>📥 Upload de Arquivos</h3>
+                        <div class="upload-zone" id="uploadZone">
+                            <div class="upload-icon">📁</div>
+                            <p>Arraste arquivos aqui ou clique para selecionar</p>
+                            <span class="upload-formats">Formatos aceitos: CSV, TXT, JSON, PDF</span>
+                            <input type="file" id="fileInput" accept=".csv,.txt,.json,.pdf" multiple hidden>
+                        </div>
+                        <div class="upload-queue" id="uploadQueue">
+                            <!-- Arquivos na fila -->
+                        </div>
+                    </div>
+
+                    <!-- Importar Conversas do WhatsApp -->
+                    <div class="import-card">
+                        <h3>💬 Importar Conversas do WhatsApp</h3>
+                        <p>Importe histórico exportado do WhatsApp para a IA aprender.</p>
+                        <div class="upload-zone" id="uploadZoneWpp">
+                            <div class="upload-icon">📱</div>
+                            <p>Arraste o arquivo .txt exportado do WhatsApp</p>
+                            <input type="file" id="wppFileInput" accept=".txt" hidden>
+                        </div>
+                        <div class="conversation-config" style="margin-top: 1rem;">
+                            <label>Nome(s) do(s) Atendente(s) (separados por vírgula):</label>
+                            <input type="text" id="attendantNames" placeholder="Ex: João, Maria, Suporte">
+                        </div>
+                    </div>
+
+                    <!-- Conectar Bases Externas -->
+                    <div class="import-card">
+                        <h3>🔗 Conectar Bases Externas</h3>
+                        <div class="external-connectors">
+                            <div class="connector-item">
+                                <span class="connector-icon">📊</span>
+                                <span class="connector-name">Google Sheets</span>
+                                <button class="btn btn-small" id="btnConnectSheets">Conectar</button>
+                            </div>
+                            <div class="connector-item">
+                                <span class="connector-icon">📝</span>
+                                <span class="connector-name">Notion</span>
+                                <button class="btn btn-small" id="btnConnectNotion">Conectar</button>
+                            </div>
+                            <div class="connector-item">
+                                <span class="connector-icon">🗃️</span>
+                                <span class="connector-name">Airtable</span>
+                                <button class="btn btn-small" id="btnConnectAirtable">Conectar</button>
+                            </div>
+                            <div class="connector-item">
+                                <span class="connector-icon">🔌</span>
+                                <span class="connector-name">API Customizada</span>
+                                <button class="btn btn-small" id="btnConnectAPI">Configurar</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Exportar para Fine-Tuning -->
+                    <div class="import-card">
+                        <h3>💾 Exportar para Fine-Tuning</h3>
+                        <p>Gere datasets para treinar modelos customizados.</p>
+                        <div class="export-formats">
+                            <button class="btn btn-secondary" data-format="jsonl">
+                                <span>📄</span> JSONL (OpenAI)
+                            </button>
+                            <button class="btn btn-secondary" data-format="alpaca">
+                                <span>🦙</span> Alpaca
+                            </button>
+                            <button class="btn btn-secondary" data-format="sharegpt">
+                                <span>💬</span> ShareGPT
+                            </button>
+                            <button class="btn btn-secondary" data-format="csv">
+                                <span>📊</span> CSV
+                            </button>
+                        </div>
+                        <div class="export-stats" id="exportStats">
+                            <span>📚 Exemplos disponíveis: <strong id="exportExamplesCount">0</strong></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resultados da Importação -->
+                <div class="import-results" id="importResults" style="display: none;">
+                    <h3>📋 Resultados da Importação</h3>
+                    <div class="results-grid" id="resultsGrid">
+                        <!-- Resultados -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Gap Detector -->
+            <div class="tab-content" id="tabGaps">
+                <div class="content-header">
+                    <h2>🎯 Detecção de Lacunas de Conhecimento</h2>
+                    <p>Identifique onde a IA não sabe responder ou tem baixa confiança.</p>
+                </div>
+
+                <div class="gap-stats">
+                    <div class="gap-stat-card">
+                        <span class="gap-stat-value" id="gapLowConfidence">0</span>
+                        <span class="gap-stat-label">Baixa Confiança</span>
+                    </div>
+                    <div class="gap-stat-card">
+                        <span class="gap-stat-value" id="gapUnanswered">0</span>
+                        <span class="gap-stat-label">Sem Resposta</span>
+                    </div>
+                    <div class="gap-stat-card">
+                        <span class="gap-stat-value" id="gapClusters">0</span>
+                        <span class="gap-stat-label">Clusters</span>
+                    </div>
+                    <div class="gap-stat-card warning">
+                        <span class="gap-stat-value" id="gapAvgConfidence">0%</span>
+                        <span class="gap-stat-label">Confiança Média</span>
+                    </div>
+                </div>
+
+                <div class="gap-section">
+                    <h3>💡 Sugestões de Melhoria</h3>
+                    <div class="suggestions-list" id="gapSuggestions">
+                        <!-- Sugestões -->
+                    </div>
+                </div>
+
+                <div class="gap-section">
+                    <h3>❓ Perguntas Mais Frequentes Sem Resposta</h3>
+                    <div class="unanswered-list" id="unansweredList">
+                        <!-- Perguntas sem resposta -->
+                    </div>
+                </div>
+
+                <div class="gap-section">
+                    <h3>📊 Distribuição por Categoria</h3>
+                    <div class="category-gaps" id="categoryGaps">
+                        <!-- Gaps por categoria -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: A/B Testing -->
+            <div class="tab-content" id="tabAbtesting">
+                <div class="content-header">
+                    <h2>🧪 A/B Testing de Respostas</h2>
+                    <p>Teste múltiplas variações de resposta para encontrar a mais eficaz.</p>
+                    <button class="btn btn-primary" id="btnNewTest">
+                        <span>➕</span> Novo Teste A/B
+                    </button>
+                </div>
+
+                <div class="ab-tests-grid" id="abTestsGrid">
+                    <!-- Testes A/B -->
+                </div>
+
+                <div class="empty-state" id="emptyTests" style="display: none;">
+                    <span class="empty-icon">🧪</span>
+                    <h3>Nenhum teste A/B criado</h3>
+                    <p>Crie testes para descobrir as melhores respostas</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Adicionar/Editar Exemplo -->
+        <div class="modal" id="exampleModal">
+            <div class="modal-content modal-large">
+                <div class="modal-header">
+                    <h2 id="exampleModalTitle">Novo Exemplo</h2>
+                    <button class="modal-close" id="closeExampleModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="exampleForm">
+                        <input type="hidden" id="exampleId">
+                        
+                        <div class="form-group">
+                            <label>Categoria</label>
+                            <select id="exampleCategory">
+                                <option value="geral">Geral</option>
+                                <option value="vendas">Vendas</option>
+                                <option value="suporte">Suporte</option>
+                                <option value="duvidas">Dúvidas</option>
+                                <option value="reclamacoes">Reclamações</option>
+                                <option value="agendamento">Agendamento</option>
+                                <option value="pagamento">Pagamento</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Mensagem do Cliente (Entrada)</label>
+                            <textarea id="exampleInput" placeholder="Ex: Qual o preço do produto X?" rows="3"></textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Resposta Ideal (Saída)</label>
+                            <textarea id="exampleOutput" placeholder="Ex: O produto X custa R$ 99,90. Temos disponibilidade imediata! Posso ajudar com mais alguma informação?" rows="4"></textarea>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Intenção Detectada</label>
+                                <select id="exampleIntent">
+                                    <option value="">Automático</option>
+                                    <option value="greeting">Saudação</option>
+                                    <option value="question_price">Pergunta sobre Preço</option>
+                                    <option value="question_availability">Disponibilidade</option>
+                                    <option value="buy_intent">Intenção de Compra</option>
+                                    <option value="complaint">Reclamação</option>
+                                    <option value="thanks">Agradecimento</option>
+                                    <option value="farewell">Despedida</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Qualidade (1-10)</label>
+                                <input type="number" id="exampleQuality" min="1" max="10" value="8">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Tags (separadas por vírgula)</label>
+                            <input type="text" id="exampleTags" placeholder="Ex: preço, produto, venda">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="btnCancelExample">Cancelar</button>
+                    <button class="btn btn-danger" id="btnDeleteExample" style="display: none;">Excluir</button>
+                    <button class="btn btn-primary" id="btnSaveExample">Salvar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: FAQ -->
+        <div class="modal" id="faqModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="faqModalTitle">Nova FAQ</h2>
+                    <button class="modal-close" id="closeFaqModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="faqForm">
+                        <input type="hidden" id="faqId">
+                        
+                        <div class="form-group">
+                            <label>Pergunta</label>
+                            <input type="text" id="faqQuestion" placeholder="Ex: Qual o horário de funcionamento?">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Resposta</label>
+                            <textarea id="faqAnswer" placeholder="Ex: Funcionamos de segunda a sexta, das 9h às 18h." rows="4"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Palavras-chave (separadas por vírgula)</label>
+                            <input type="text" id="faqKeywords" placeholder="Ex: horário, funcionamento, aberto">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="btnCancelFaq">Cancelar</button>
+                    <button class="btn btn-danger" id="btnDeleteFaq" style="display: none;">Excluir</button>
+                    <button class="btn btn-primary" id="btnSaveFaq">Salvar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Produto -->
+        <div class="modal" id="productModal">
+            <div class="modal-content modal-large">
+                <div class="modal-header">
+                    <h2 id="productModalTitle">Novo Produto</h2>
+                    <button class="modal-close" id="closeProductModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="productForm">
+                        <input type="hidden" id="productId">
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Nome do Produto</label>
+                                <input type="text" id="productName" placeholder="Ex: Camiseta Básica">
+                            </div>
+                            <div class="form-group">
+                                <label>Código/SKU</label>
+                                <input type="text" id="productSku" placeholder="Ex: CAM001">
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Descrição</label>
+                            <textarea id="productDescription" placeholder="Descreva o produto..." rows="3"></textarea>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Preço (R$)</label>
+                                <input type="number" id="productPrice" step="0.01" placeholder="0.00">
+                            </div>
+                            <div class="form-group">
+                                <label>Preço Promocional (R$)</label>
+                                <input type="number" id="productPromoPrice" step="0.01" placeholder="0.00">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Categoria</label>
+                                <input type="text" id="productCategory" placeholder="Ex: Roupas, Eletrônicos">
+                            </div>
+                            <div class="form-group">
+                                <label>Disponibilidade</label>
+                                <select id="productAvailability">
+                                    <option value="available">Disponível</option>
+                                    <option value="low_stock">Estoque Baixo</option>
+                                    <option value="out_of_stock">Esgotado</option>
+                                    <option value="pre_order">Pré-venda</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Informações Adicionais</label>
+                            <textarea id="productInfo" placeholder="Especificações técnicas, tamanhos disponíveis, etc." rows="3"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="btnCancelProduct">Cancelar</button>
+                    <button class="btn btn-danger" id="btnDeleteProduct" style="display: none;">Excluir</button>
+                    <button class="btn btn-primary" id="btnSaveProduct">Salvar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Novo Teste A/B -->
+        <div class="modal" id="abTestModal">
+            <div class="modal-content modal-large">
+                <div class="modal-header">
+                    <h2>🧪 Novo Teste A/B</h2>
+                    <button class="modal-close" id="closeAbTestModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="abTestForm">
+                        <div class="form-group">
+                            <label>Nome do Teste</label>
+                            <input type="text" id="abTestName" placeholder="Ex: Teste de Saudação">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Pergunta/Gatilho</label>
+                            <input type="text" id="abTestQuestion" placeholder="Ex: Qual o preço do produto?">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Variação A</label>
+                            <textarea id="abVariationA" placeholder="Primeira versão da resposta..." rows="3"></textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Variação B</label>
+                            <textarea id="abVariationB" placeholder="Segunda versão da resposta..." rows="3"></textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Variação C (opcional)</label>
+                            <textarea id="abVariationC" placeholder="Terceira versão da resposta..." rows="3"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="btnCancelAbTest">Cancelar</button>
+                    <button class="btn btn-primary" id="btnCreateAbTest">Criar Teste</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Conectar Google Sheets -->
+        <div class="modal" id="sheetsModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>📊 Conectar Google Sheets</h2>
+                    <button class="modal-close" id="closeSheetsModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="sheetsForm">
+                        <div class="form-group">
+                            <label>ID da Planilha</label>
+                            <input type="text" id="sheetsId" placeholder="Ex: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms">
+                            <small>Encontre na URL: docs.google.com/spreadsheets/d/<strong>ID</strong>/edit</small>
+                        </div>
+                        <div class="form-group">
+                            <label>API Key do Google</label>
+                            <input type="password" id="sheetsApiKey" placeholder="Sua API Key do Google Cloud">
+                        </div>
+                        <div class="form-group">
+                            <label>Nome das Abas (separadas por vírgula)</label>
+                            <input type="text" id="sheetsNames" placeholder="Ex: Produtos, FAQs, Preços">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="btnCancelSheets">Cancelar</button>
+                    <button class="btn btn-primary" id="btnSaveSheets">Conectar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Conectar Notion -->
+        <div class="modal" id="notionModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>📝 Conectar Notion</h2>
+                    <button class="modal-close" id="closeNotionModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="notionForm">
+                        <div class="form-group">
+                            <label>API Key do Notion</label>
+                            <input type="password" id="notionApiKey" placeholder="secret_...">
+                        </div>
+                        <div class="form-group">
+                            <label>IDs dos Databases (separados por vírgula)</label>
+                            <input type="text" id="notionDatabases" placeholder="Ex: abc123, def456">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="btnCancelNotion">Cancelar</button>
+                    <button class="btn btn-primary" id="btnSaveNotion">Conectar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Container -->
+        <div class="toast-container" id="toastContainer"></div>
+    </div>
+
+    <!-- Core Modules -->
+    <script src="../utils/html-utils.js"></script>
+    <script src="../utils/logger.js"></script>
+    <script src="../utils/ui-helpers.js"></script>
+    
+    <!-- AI Client (expõe CopilotEngine/AIService para esta página) -->
+    <script src="modules/ai-client.js"></script>
+    
+    <script src="simulation-engine.js"></script>
+    
+    <!-- Training Optimization Modules -->
+    <script src="modules/document-importer.js"></script>
+    <script src="modules/conversation-analyzer.js"></script>
+    <script src="modules/ab-testing.js"></script>
+    <script src="modules/gap-detector.js"></script>
+    <script src="modules/quality-scorer.js"></script>
+    <script src="modules/adaptive-persona.js"></script>
+    <script src="modules/sentiment-tracker.js"></script>
+    <script src="modules/external-kb.js"></script>
+    <script src="modules/dataset-exporter.js"></script>
+    <script src="modules/advanced-scenarios.js"></script>
+    
+    <!-- Voice Training Modules -->
+    <script src="modules/voice-recorder.js"></script>
+    <script src="modules/speech-to-text.js"></script>
+    <script src="modules/interactive-training.js"></script>
+    
+    <!-- Main Training Script -->
+    <script src="training.js"></script>
+</body>
+</html>
