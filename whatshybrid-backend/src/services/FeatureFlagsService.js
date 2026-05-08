@@ -22,7 +22,11 @@
 const { v4: uuidv4 } = require('../utils/uuid-wrapper');
 const logger = require('../utils/logger').logger;
 
+// v9.5.0 BUG #155: cache de feature flags era unbounded. Em produção com 100+
+// workspaces × N flags poderia crescer sem limite até TTL kicking in. Agora
+// MAX_CACHE_SIZE limita; ao atingir, eviction de 10% LRU.
 const CACHE_TTL_MS = 60_000;
+const MAX_CACHE_SIZE = parseInt(process.env.FFLAGS_CACHE_MAX, 10) || 2000;
 const cache = new Map(); // key = `${flagName}:${workspaceId||'*'}` → { value, expires }
 
 function _cacheGet(key) {
@@ -33,6 +37,14 @@ function _cacheGet(key) {
 }
 
 function _cacheSet(key, value) {
+  if (cache.size >= MAX_CACHE_SIZE) {
+    const evict = Math.max(1, Math.floor(MAX_CACHE_SIZE * 0.1));
+    let n = 0;
+    for (const k of cache.keys()) {
+      cache.delete(k);
+      if (++n >= evict) break;
+    }
+  }
   cache.set(key, { value, expires: Date.now() + CACHE_TTL_MS });
 }
 

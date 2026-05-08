@@ -29,7 +29,12 @@ const logger = require('../utils/logger');
 // ── Redis store (opcional mas recomendado em produção) ───────────────────────
 let redisStore = null;
 
-function buildRedisStore(_windowMs) {
+// v9.5.0 BUG #136: cada rate limiter PRECISA de sua própria instância de Store.
+// A v9.4.7 reusava `generalStore` entre `rateLimiter` e `apiLimiter` →
+// express-rate-limit v7 lança ERR_ERL_STORE_REUSE no boot. Por isso o servidor
+// não bootava. Fix: construir Store novo por limiter, com prefix único pra
+// não contaminar buckets entre eles em Redis.
+function buildRedisStore(prefix) {
   // FIX: opt-out explícito
   if (process.env.REDIS_DISABLED === 'true') {
     return undefined;
@@ -45,7 +50,7 @@ function buildRedisStore(_windowMs) {
     });
     return new RedisStore({
       sendCommand: (...args) => client.sendCommand(args),
-      prefix: 'rl:',
+      prefix: `rl:${prefix || 'general'}:`,
     });
   } catch (e) {
     if (process.env.NODE_ENV === 'production') {
@@ -57,15 +62,11 @@ function buildRedisStore(_windowMs) {
   }
 }
 
-const generalStore  = buildRedisStore(config.rateLimit?.windowMs || 60000);
-const authStore     = buildRedisStore(15 * 60 * 1000);
-const aiStore       = buildRedisStore(60 * 1000);
-
 // ── General rate limiter ─────────────────────────────────────────────────────
 const rateLimiter = rateLimit({
   windowMs: config.rateLimit?.windowMs || 60 * 1000,
   max:      config.rateLimit?.max      || 100,
-  store:    generalStore,
+  store:    buildRedisStore('general'),
   message: {
     error: 'Too Many Requests',
     message: 'Rate limit exceeded. Please try again later.',
@@ -80,7 +81,7 @@ const rateLimiter = rateLimit({
 const authLimiter = rateLimit({
   windowMs: parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000,
   max:      parseInt(process.env.AUTH_RATE_LIMIT_MAX, 10)       || 5,
-  store:    authStore,
+  store:    buildRedisStore('auth'),
   message: {
     error: 'Too Many Requests',
     message: 'Muitas tentativas de login. Tente novamente em 15 minutos.',
@@ -95,7 +96,7 @@ const authLimiter = rateLimit({
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max:      60,
-  store:    generalStore,
+  store:    buildRedisStore('api'),
   message: { error: 'Too Many Requests', message: 'API rate limit exceeded.' },
   keyGenerator: (req) => req.workspaceId || req.ip,
 });
@@ -104,7 +105,7 @@ const apiLimiter = rateLimit({
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max:      parseInt(process.env.AI_RATE_LIMIT_MAX, 10) || 20,
-  store:    aiStore,
+  store:    buildRedisStore('ai'),
   message: {
     error: 'Too Many Requests',
     message: 'AI rate limit exceeded. Please wait before making more AI requests.',
@@ -112,4 +113,13 @@ const aiLimiter = rateLimit({
   keyGenerator: (req) => req.user?.workspaceId || req.user?.id || req.ip,
 });
 
-module.exports = { rateLimiter, authLimiter, apiLimiter, aiLimiter };
+// ── Webhook limiter (signature-based, alto throughput) ──────────────────────
+const webhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max:      parseInt(process.env.WEBHOOK_RATE_LIMIT_MAX, 10) || 60,
+  store:    buildRedisStore('webhook'),
+  message: { error: 'Too Many Requests', message: 'Webhook rate limit exceeded.' },
+  keyGenerator: (req) => req.ip,
+});
+
+module.exports = { rateLimiter, authLimiter, apiLimiter, aiLimiter, webhookLimiter };

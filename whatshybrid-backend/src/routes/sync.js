@@ -12,8 +12,10 @@ const router = express.Router();
 const { v4: uuidv4 } = require('../utils/uuid-wrapper');
 const db = require('../utils/database');
 const { authenticate } = require('../middleware/auth');
-const asyncHandler = require('../middleware/asyncHandler');
-const { AppError } = require('../middleware/errorHandler');
+// v9.5.0 BUG #140: ../middleware/asyncHandler não existe — asyncHandler vive
+// em errorHandler. Em v9.4.7 esse require silenciosamente carregava `undefined`
+// e cada router.<verb>(path, undefined, ...) crashava no boot.
+const { asyncHandler, AppError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 
 // Aplicar autenticação a todas as rotas

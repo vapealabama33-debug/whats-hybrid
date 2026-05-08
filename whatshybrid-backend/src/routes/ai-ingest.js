@@ -781,27 +781,33 @@ router.post('/sync', authenticate, asyncHandler(async (req, res) => {
     businessInfo: 0
   };
 
+  // v9.5.0 BUG #147: Refactor cross-driver. Antes este endpoint usava
+  // `db.getDb().prepare(sql)` + named params (`@id`, `@workspaceId`) — feature
+  // exclusiva de better-sqlite3, quebrando em Postgres mesmo com adapter SQL.
+  // CHANGELOG-v9.4.7 documentou como "v10". Refatorado pra `db.run(sql, [params])`
+  // que funciona nos dois drivers e usa o adapter de INSERT OR REPLACE existente.
+  const { v4: uuidv4 } = require('../utils/uuid-wrapper');
+
   // Sync Examples
   if (Array.isArray(examples)) {
-    const stmt = db.getDb().prepare(`
-      INSERT OR REPLACE INTO training_examples (id, workspace_id, input, output, context, category, tags, created_at, updated_at)
-      VALUES (@id, @workspaceId, @input, @output, @context, @category, @tags, @created_at, @updated_at)
-    `);
-    
     db.transaction(() => {
+      const sql = `INSERT OR REPLACE INTO training_examples
+        (id, workspace_id, input, output, context, category, tags, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      const now = new Date().toISOString();
       examples.forEach(ex => {
         try {
-          stmt.run({
-            id: ex.id || require('../utils/uuid-wrapper').v4(),
+          db.run(sql, [
+            ex.id || uuidv4(),
             workspaceId,
-            input: ex.input,
-            output: ex.output,
-            context: ex.context || '',
-            category: ex.category || 'Geral',
-            tags: JSON.stringify(ex.tags || []),
-            created_at: ex.createdAt || new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
+            ex.input,
+            ex.output,
+            ex.context || '',
+            ex.category || 'Geral',
+            JSON.stringify(ex.tags || []),
+            ex.createdAt || now,
+            now,
+          ]);
           results.examples++;
         } catch (e) {
           logger.error('[Sync] Erro ao salvar exemplo:', e);
@@ -812,24 +818,23 @@ router.post('/sync', authenticate, asyncHandler(async (req, res) => {
 
   // Sync FAQs
   if (Array.isArray(faqs)) {
-    const stmt = db.getDb().prepare(`
-      INSERT OR REPLACE INTO faqs (id, workspace_id, question, answer, category, keywords, created_at, updated_at)
-      VALUES (@id, @workspaceId, @question, @answer, @category, @keywords, @created_at, @updated_at)
-    `);
-    
     db.transaction(() => {
+      const sql = `INSERT OR REPLACE INTO faqs
+        (id, workspace_id, question, answer, category, keywords, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+      const now = new Date().toISOString();
       faqs.forEach(faq => {
         try {
-          stmt.run({
-            id: faq.id || require('../utils/uuid-wrapper').v4(),
+          db.run(sql, [
+            faq.id || uuidv4(),
             workspaceId,
-            question: faq.question,
-            answer: faq.answer,
-            category: faq.category || 'general',
-            keywords: JSON.stringify(faq.keywords || []),
-            created_at: faq.createdAt || new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
+            faq.question,
+            faq.answer,
+            faq.category || 'general',
+            JSON.stringify(faq.keywords || []),
+            faq.createdAt || now,
+            now,
+          ]);
           results.faqs++;
         } catch (e) {
           logger.error('[Sync] Erro ao salvar FAQ:', e);
@@ -840,29 +845,25 @@ router.post('/sync', authenticate, asyncHandler(async (req, res) => {
 
   // Sync Products
   if (Array.isArray(products)) {
-    const stmt = db.getDb().prepare(`
-      INSERT OR REPLACE INTO products (
-        id, workspace_id, name, description, price, stock, category, tags, created_at, updated_at
-      ) VALUES (
-        @id, @workspaceId, @name, @description, @price, @stock, @category, @tags, @created_at, @updated_at
-      )
-    `);
-
     db.transaction(() => {
+      const sql = `INSERT OR REPLACE INTO products
+        (id, workspace_id, name, description, price, stock, category, tags, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      const now = new Date().toISOString();
       products.forEach(prod => {
         try {
-          stmt.run({
-            id: prod.id || require('../utils/uuid-wrapper').v4(),
+          db.run(sql, [
+            prod.id || uuidv4(),
             workspaceId,
-            name: prod.name,
-            description: prod.description || '',
-            price: prod.price || 0,
-            stock: prod.stock || 0,
-            category: prod.category || 'general',
-            tags: JSON.stringify(prod.tags || []),
-            created_at: prod.createdAt || new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
+            prod.name,
+            prod.description || '',
+            prod.price || 0,
+            prod.stock || 0,
+            prod.category || 'general',
+            JSON.stringify(prod.tags || []),
+            prod.createdAt || now,
+            now,
+          ]);
           results.products++;
         } catch (e) {
           logger.error('[Sync] Erro ao salvar produto:', e);
@@ -874,18 +875,18 @@ router.post('/sync', authenticate, asyncHandler(async (req, res) => {
   // Sync Business Info
   if (businessInfo && typeof businessInfo === 'object') {
     try {
-      db.getDb().prepare(`
-        CREATE TABLE IF NOT EXISTS business_info (
-          workspace_id TEXT PRIMARY KEY,
-          data TEXT,
-          updated_at TEXT
-        )
-      `).run();
+      // CREATE TABLE IF NOT EXISTS via exec — funciona nos dois drivers.
+      // Se a tabela já existir (caso normal pós-migrations) é no-op.
+      db.exec(`CREATE TABLE IF NOT EXISTS business_info (
+        workspace_id TEXT PRIMARY KEY,
+        data TEXT,
+        updated_at TEXT
+      )`);
 
-      db.getDb().prepare(`
-        INSERT OR REPLACE INTO business_info (workspace_id, data, updated_at)
-        VALUES (?, ?, ?)
-      `).run(workspaceId, JSON.stringify(businessInfo), new Date().toISOString());
+      db.run(
+        `INSERT OR REPLACE INTO business_info (workspace_id, data, updated_at) VALUES (?, ?, ?)`,
+        [workspaceId, JSON.stringify(businessInfo), new Date().toISOString()]
+      );
 
       results.businessInfo = 1;
     } catch (e) {

@@ -1,6 +1,6 @@
 {
   "name": "whatshybrid-backend",
-  "version": "9.4.7",
+  "version": "9.5.0",
   "description": "WhatsHybrid Pro Backend API - SmartBot IA Edition",
   "main": "src/server.js",
   "scripts": {

@@ -4,7 +4,7 @@
  */
 
 const EventEmitter = require('events');
-const logger = require('../utils/logger');
+const logger = require('../../utils/logger');
 
 // 1. KNOWLEDGE BASE (RAG)
 class KnowledgeBase extends EventEmitter {

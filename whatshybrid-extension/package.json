@@ -1,6 +1,6 @@
 {
   "name": "whatshybrid-extension",
-  "version": "9.4.7",
+  "version": "9.5.0",
   "description": "WhatsHybrid Pro - Extensão Chrome para WhatsApp Web",
   "private": true,
   "main": "background.js",

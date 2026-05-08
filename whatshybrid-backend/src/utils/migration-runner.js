@@ -45,6 +45,21 @@ async function getApplied(db) {
   return new Set((result || []).map(r => r.id));
 }
 
+// v9.5.0 BUG #150: SQLite não suporta ALTER TABLE ADD COLUMN IF NOT EXISTS.
+// Quando legacy SCHEMA + legacy.runMigrations já adicionou as colunas que
+// uma migration versionada (002, 005) tenta adicionar de novo, recebemos
+// "duplicate column name". Ignoramos APENAS esse erro específico; outros
+// erros de DDL ainda quebram a transação.
+function _isIdempotentSqlError(msg) {
+  if (!msg) return false;
+  const m = String(msg).toLowerCase();
+  return (
+    m.includes('duplicate column name') ||      // SQLite duplicate ALTER ADD
+    m.includes('already exists') ||             // CREATE TABLE/INDEX duplicado
+    m.includes('column already exists')         // Postgres equivalent
+  );
+}
+
 async function applyMigration(db, file, content) {
   const id = path.basename(file, '.sql');
   logger.info(`[Migration] Applying ${id}...`);
@@ -56,15 +71,33 @@ async function applyMigration(db, file, content) {
     // SQLite via better-sqlite3 — síncrono
     db.transaction(() => {
       for (const stmt of statements) {
-        db.exec(stmt);
+        try {
+          db.exec(stmt);
+        } catch (e) {
+          if (_isIdempotentSqlError(e.message)) {
+            logger.debug(`[Migration] ${id}: idempotent skip — ${e.message}`);
+            continue;
+          }
+          throw e;
+        }
       }
       db.run('INSERT INTO _migrations (id, filename) VALUES (?, ?)', [id, path.basename(file)]);
     });
   } else {
-    // Postgres — assíncrono
+    // Postgres — assíncrono. Ainda commit-or-rollback inteiro, mas perdoa
+    // erros de idempotência por statement (Postgres tem ALTER TABLE IF EXISTS
+    // mas migrations legadas nem sempre usam).
     await db.transaction(async (txDb) => {
       for (const stmt of statements) {
-        await txDb.exec(stmt);
+        try {
+          await txDb.exec(stmt);
+        } catch (e) {
+          if (_isIdempotentSqlError(e.message)) {
+            logger.debug(`[Migration] ${id}: idempotent skip — ${e.message}`);
+            continue;
+          }
+          throw e;
+        }
       }
       await txDb.run('INSERT INTO _migrations (id, filename) VALUES (?, ?)', [id, path.basename(file)]);
     });

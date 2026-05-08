@@ -24,6 +24,25 @@ module.exports = {
    */
   async runMigrations() {
     const legacy = require('./database-legacy');
+
+    // v9.5.0 BUG #148: schema completo (CREATE TABLE users, workspaces, ...)
+    // só era aplicado quando legacy.initialize() era chamado. server.js usa
+    // `driver.initialize()` (do sqlite-driver), que só abre a conexão sem
+    // executar o SCHEMA. Resultado: queries em users/login_attempts crashavam
+    // com "no such table: users". Em SQLite, exportamos SCHEMA do legacy e
+    // aplicamos aqui.
+    if (driver.driver === 'sqlite') {
+      try {
+        const { SCHEMA } = legacy;
+        if (typeof SCHEMA === 'string' && SCHEMA.length > 0) {
+          driver.exec(SCHEMA);
+          logger.info('[DB] Base schema applied');
+        }
+      } catch (err) {
+        logger.warn(`[DB] Schema exec issue: ${err.message}`);
+      }
+    }
+
     if (typeof legacy.runMigrations === 'function') {
       try {
         legacy.runMigrations(driver.driver === 'sqlite' ? driver.getDb() : null);

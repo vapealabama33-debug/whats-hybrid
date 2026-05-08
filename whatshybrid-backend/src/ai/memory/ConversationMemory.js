@@ -18,7 +18,7 @@
  */
 
 const fs = require('fs').promises;
-const logger = require('../utils/logger');
+const logger = require('../../utils/logger');
 const path = require('path');
 // FIX HIGH: era hardcoded em OpenAIProvider — bypassa fallback do AIRouter inteiro.
 // Agora usa o singleton do AIRouter com fallback automático para Anthropic/Groq.

@@ -22,7 +22,7 @@
  */
 
 const fs = require('fs').promises;
-const logger = require('../utils/logger');
+const logger = require('../../utils/logger');
 const path = require('path');
 const EmbeddingProvider = require('../embeddings/EmbeddingProvider');
 

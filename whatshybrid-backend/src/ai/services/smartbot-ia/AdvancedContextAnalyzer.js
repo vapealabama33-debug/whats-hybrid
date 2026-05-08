@@ -254,7 +254,7 @@ Mensagem: "${truncated}"`;
     // Bug anterior: linha 240 aceitava ANTHROPIC_API_KEY como suficiente, mas linha 263 enviava
     // como Bearer Authorization para api.openai.com → 401 garantido em tenants Anthropic-only.
     try {
-      const AIRouter = require('./AIRouterService');
+      const AIRouter = require('../AIRouterService');
       const result = await AIRouter.complete([
         { role: 'user', content: prompt }
       ], {

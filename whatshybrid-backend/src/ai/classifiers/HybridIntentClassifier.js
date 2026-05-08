@@ -19,7 +19,7 @@
  */
 
 const OpenAIProvider = require('../providers/OpenAIProvider');
-const logger = require('../utils/logger');
+const logger = require('../../utils/logger');
 
 /**
  * Intenções suportadas com descrições

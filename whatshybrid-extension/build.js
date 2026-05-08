@@ -27,6 +27,30 @@ const projectRoot = __dirname;
 const distDir = path.join(projectRoot, 'dist');
 if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true });
 
+// v9.5.0 BUG #156: concat wpp-hooks-parts → wpp-hooks.js antes do build.
+// O arquivo é injetado como <script src=> via web_accessible_resources e
+// NÃO faz parte dos bundles. Em v9.4.7 era um stub vazio; partes não eram
+// carregadas; sapl.js (self-healing) achava window.whl_hooks_main undefined.
+(function rebuildWppHooks() {
+  const partsDir = path.join(projectRoot, 'content', 'wpp-hooks-parts');
+  if (!fs.existsSync(partsDir)) return;
+  const parts = fs.readdirSync(partsDir).filter(f => f.endsWith('.js')).sort();
+  if (!parts.length) return;
+  let out = `/**
+ * wpp-hooks.js — concatenado de wpp-hooks-parts/*.js (gerado por build.js).
+ * Não editar; mexa nos arquivos em content/wpp-hooks-parts/ e re-build.
+ */
+console.log('[WHL WPP Hooks] carregando');
+`;
+  for (const p of parts) {
+    out += `\n// ─── BEGIN ${p} ───\n`;
+    out += fs.readFileSync(path.join(partsDir, p), 'utf8');
+    out += `\n// ─── END ${p} ───\n`;
+  }
+  fs.writeFileSync(path.join(projectRoot, 'content', 'wpp-hooks.js'), out);
+  console.log(`[Build] wpp-hooks.js: concatenado de ${parts.length} pedaços (${(out.length/1024).toFixed(1)}KB)`);
+})();
+
 const manifestStrat = JSON.parse(
   fs.readFileSync(path.join(projectRoot, 'build-manifest.json'), 'utf8')
 );

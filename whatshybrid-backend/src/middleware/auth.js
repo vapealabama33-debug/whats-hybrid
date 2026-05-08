@@ -22,10 +22,14 @@ const config = require('../../config');
 const db = require('../utils/database');
 
 // ============================================
-// Cache de sessões (TTL: 5 minutos)
+// Cache de sessões (TTL: 5 minutos, LRU bounded)
 // ============================================
+// v9.5.0 BUG #155: cache não tinha MAX size — se 100k tokens autenticados
+// chegassem entre limpezas (60s), todos ficavam em RAM. Agora bounded com
+// LRU eviction. SESSION_CACHE_MAX é configurável via env.
 const sessionCache = new Map();
 const SESSION_CACHE_TTL = 5 * 60 * 1000;
+const SESSION_CACHE_MAX = parseInt(process.env.SESSION_CACHE_MAX, 10) || 5000;
 
 function cleanupSessionCache() {
   const now = Date.now();
@@ -34,6 +38,20 @@ function cleanupSessionCache() {
       sessionCache.delete(key);
     }
   }
+}
+
+function _setSessionCache(key, entry) {
+  // Map iteration is insertion-ordered → first key é o LRU.
+  if (sessionCache.size >= SESSION_CACHE_MAX) {
+    // Evict 10% mais antigos pra evitar custo a cada insert.
+    const evict = Math.max(1, Math.floor(SESSION_CACHE_MAX * 0.1));
+    let n = 0;
+    for (const k of sessionCache.keys()) {
+      sessionCache.delete(k);
+      if (++n >= evict) break;
+    }
+  }
+  sessionCache.set(key, entry);
 }
 
 // Limpar cache periodicamente
@@ -114,7 +132,7 @@ async function authenticate(req, res, next) {
     }
 
     // Atualizar cache
-    sessionCache.set(token, { user, timestamp: Date.now() });
+    _setSessionCache(token, { user, timestamp: Date.now() });
 
     req.user = user;
     req.userId = user.id;

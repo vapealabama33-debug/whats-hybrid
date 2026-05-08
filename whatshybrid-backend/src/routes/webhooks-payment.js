@@ -19,10 +19,17 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const db = require('../utils/database');
-const asyncHandler = require('../middleware/asyncHandler');
+// v9.5.0 BUG #140: ../middleware/asyncHandler não existe — asyncHandler vive
+// em ../middleware/errorHandler. Importava module-not-found e caía no catch
+// global de server.js silenciosamente. Em v9.4.7 esta rota foi refatorada
+// (Bug #126) e o import quebrado escapou da auditoria.
+const { asyncHandler } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 // v9.3.8: authLimiter pra prevenir brute-force em /validate
 const { authLimiter } = require('../middleware/rateLimiter');
+// v9.5.0 BUG #143: rota POST /sync (linha ~601) usa `authenticate` mas nunca
+// importava — server crashava no boot ao carregar este arquivo.
+const { authenticate } = require('../middleware/auth');
 
 // ============================================
 // CONFIGURAÇÃO DE PLANOS

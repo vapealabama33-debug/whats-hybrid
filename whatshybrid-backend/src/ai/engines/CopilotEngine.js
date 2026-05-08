@@ -12,7 +12,7 @@
  */
 
 const AIRouter = require('../services/AIRouterService');
-const logger = require('../utils/logger');
+const logger = require('../../utils/logger');
 
 // Intent types
 const INTENTS = {

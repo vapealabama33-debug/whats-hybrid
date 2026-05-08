@@ -7,7 +7,7 @@
  */
 
 const EventEmitter = require('events');
-const logger = require('../utils/logger');
+const logger = require('../../utils/logger');
 const database = require('../../utils/database');
 
 class AutoPilotService extends EventEmitter {

@@ -401,7 +401,10 @@ router.post('/process', authenticate, asyncHandler(async (req, res) => {
   // Resultado: cliente sem créditos consumia API key do dev gratuitamente.
   // Agora: bloqueia request com 402 se saldo zerado, antes de qualquer chamada externa.
   try {
-    const tokenService = require('../../services/TokenService');
+    // v9.5.0 BUG #141: caminho errado — ai-v2.js está em src/routes/ não em
+    // src/routes/<sub>/. ../../services aponta pra src/services (existe) só por
+    // coincidência geometrica errada. Caminho canônico é ../services/TokenService.
+    const tokenService = require('../services/TokenService');
     const balance = tokenService.getBalance(tenantId);
     // Margem mínima: 100 tokens (cobre ao menos 1 mensagem curta).
     // Workspaces em plano free com 0 tokens são bloqueados aqui.

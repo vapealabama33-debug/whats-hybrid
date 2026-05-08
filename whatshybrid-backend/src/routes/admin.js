@@ -11,7 +11,8 @@ const crypto = require('crypto');
 const db = require('../utils/database');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { makeLikeTerm } = require('../utils/sql-helpers');
-const asyncHandler = require('../middleware/asyncHandler');
+// v9.5.0 BUG #140: ../middleware/asyncHandler não existe — vive em errorHandler.
+const { asyncHandler } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 
 // ============================================

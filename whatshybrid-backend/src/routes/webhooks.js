@@ -65,9 +65,21 @@ function signPayload(payload, secret) {
 // Caso contrário, quando WEBHOOK_SECRET existir em produção, chamadas internas sem
 // `x-webhook-signature` falhariam com 401 e quebrariam o painel/integração.
 
+// v9.5.0 BUG #154: GET retornava `secret` em texto puro pra qualquer user autenticado
+// no workspace. Secret só sai uma vez no /regenerate-secret. Aqui mascaramos
+// (mostra prefixo + len pra UI poder indicar "segredo configurado").
+function _redactWebhookSecret(w) {
+  if (!w) return w;
+  const s = w.secret;
+  if (typeof s === 'string' && s.length > 0) {
+    return { ...w, secret: `${s.substring(0, 4)}…${s.length}c`, has_secret: true };
+  }
+  return { ...w, secret: undefined, has_secret: false };
+}
+
 router.get('/', authenticate, asyncHandler(async (req, res) => {
   const webhooks = db.all('SELECT * FROM webhooks WHERE workspace_id = ?', [req.workspaceId])
-    .map(w => ({ ...w, events: JSON.parse(w.events || '[]'), headers: JSON.parse(w.headers || '{}') }));
+    .map(w => _redactWebhookSecret({ ...w, events: JSON.parse(w.events || '[]'), headers: JSON.parse(w.headers || '{}') }));
   res.json({ webhooks });
 }));
 
@@ -76,8 +88,9 @@ router.get('/:id', authenticate, asyncHandler(async (req, res) => {
   if (!webhook) throw new AppError('Webhook not found', 404);
   webhook.events = JSON.parse(webhook.events || '[]');
   webhook.headers = JSON.parse(webhook.headers || '{}');
+  const redacted = _redactWebhookSecret(webhook);
   const logs = db.all('SELECT * FROM webhook_logs WHERE webhook_id = ? ORDER BY created_at DESC LIMIT 20', [webhook.id]);
-  res.json({ webhook, logs });
+  res.json({ webhook: redacted, logs });
 }));
 
 router.post('/', authenticate, asyncHandler(async (req, res) => {

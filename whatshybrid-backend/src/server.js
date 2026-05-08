@@ -670,24 +670,34 @@ async function startServer() {
     await database.initialize();
     logger.info('Database initialized');
 
-    // Initialize Jobs Runner
+    // v9.5.0 BUG #148: rodar migrations explicitamente. Antes, o schema só
+    // era aplicado quando código legado chamava database-legacy.initialize();
+    // o server.js só chamava database.initialize() (driver) que só abre a
+    // conexão. Resultado: tabelas (users, login_attempts, ...) não existiam,
+    // qualquer endpoint authentication crashava com "no such table: users".
     try {
-      await JobsRunner.initSchema(database.getDb());
-      await JobsRunner.start(database.getDb());
-      logger.info('Jobs Runner initialized');
-    } catch (jobsError) {
-      logger.warn('Jobs Runner initialization skipped:', jobsError.message);
+      await database.runMigrations();
+      logger.info('Migrations applied');
+    } catch (migErr) {
+      logger.error('Falha ao aplicar migrations:', migErr);
+      throw migErr;
     }
 
-    // Seed default user if configured (ONLY in development)
-    if (config.env === 'development') {
-      try {
-        const { seedDefaultUser } = require('../seed-user');
-        await seedDefaultUser();
-      } catch (seedError) {
-        logger.warn('Seed user skipped:', seedError.message);
-      }
+    // Initialize Jobs Runner
+    // v9.5.0 BUG #145: passar `database` (wrapper com .run/.get/.all async) e
+    // não `database.getDb()` (better-sqlite3 raw que expõe .prepare). Antes
+    // crashava no boot com "db.all is not a function" e o catch escondia.
+    try {
+      await JobsRunner.initSchema(database);
+      await JobsRunner.start(database);
+      logger.info('Jobs Runner initialized');
+    } catch (jobsError) {
+      logger.warn(`Jobs Runner initialization skipped: ${jobsError.message}`);
     }
+
+    // v9.5.0 BUG #142: seed-user.js nunca existiu. Try/catch escondia mas
+    // gerava warning poluído todo boot em dev. Removido — não há seeds.
+    // Schema é seedado via migrations + database-legacy.
 
     // Start server
     const PORT = config.port;

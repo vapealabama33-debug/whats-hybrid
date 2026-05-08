@@ -49,7 +49,7 @@ class SmartBotIAService extends EventEmitter {
   _getOrchestrator() {
     if (!this._orchestrator) {
       try {
-        const AIOrchestrator = require('../AIOrchestrator');
+        const AIOrchestrator = require('../../AIOrchestrator');
         this._orchestrator = new AIOrchestrator({
           tenantId: this._orchestratorTenantId,
           enableCommercialIntelligence: true,

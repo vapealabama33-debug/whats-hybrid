@@ -109,8 +109,23 @@ class Logger {
     };
   }
 
+  // v9.5.0 BUG #146: muitos callers passam string como 2º argumento (`logger.warn(msg, err.message)`).
+  // O JSON.stringify({ ...sanitize(string) }) espalhava os caracteres como
+  // chaves numéricas (`{"0":"C","1":"a","2":"n",…}`) → logs ilegíveis.
+  // Agora normalizamos: string vira `{ detail: <string> }`, número/bool vira
+  // `{ value: <v> }`, undefined/null é ignorado.
+  _normalizeContext(ctx) {
+    if (ctx == null) return {};
+    if (typeof ctx === 'string') return { detail: ctx };
+    if (typeof ctx === 'number' || typeof ctx === 'boolean') return { value: ctx };
+    if (Array.isArray(ctx)) return { items: ctx };
+    return ctx;
+  }
+
   error(message, error, context = {}) {
-    const formatted = error instanceof Error ? this.formatError(error, context) : { error: sanitize(error), ...sanitize(context) };
+    const formatted = error instanceof Error
+      ? this.formatError(error, this._normalizeContext(context))
+      : { error: sanitize(this._normalizeContext(error)), ...sanitize(this._normalizeContext(context)) };
     console.error(JSON.stringify({
       level: 'error',
       message,
@@ -123,7 +138,7 @@ class Logger {
     console.warn(JSON.stringify({
       level: 'warn',
       message,
-      ...sanitize(context),
+      ...sanitize(this._normalizeContext(context)),
       timestamp: new Date().toISOString()
     }));
   }
@@ -132,7 +147,7 @@ class Logger {
     console.log(JSON.stringify({
       level: 'info',
       message,
-      ...sanitize(context),
+      ...sanitize(this._normalizeContext(context)),
       timestamp: new Date().toISOString()
     }));
   }
@@ -142,7 +157,7 @@ class Logger {
       console.log(JSON.stringify({
         level: 'debug',
         message,
-        ...sanitize(context),
+        ...sanitize(this._normalizeContext(context)),
         timestamp: new Date().toISOString()
       }));
     }
@@ -183,4 +198,17 @@ class AppError extends Error {
   }
 }
 
-module.exports = { logger, asyncHandler, AppError, sanitize, SENSITIVE_FIELDS };
+// v9.5.0 BUG #135: o módulo exporta a instância `logger` direto pra suportar
+// ambos padrões de import sem quebrar:
+//   const logger = require('./logger');             → instância (com .info/.warn/.error)
+//   const { logger } = require('./logger');         → mesma instância via self-ref
+//   const { asyncHandler, AppError } = require(...) → ainda funciona
+// Antes a v9.4.7 só expunha `{ logger, ... }` mas ~100 arquivos faziam
+// `const logger = require('./logger')` → logger.info era undefined → server
+// não bootava.
+module.exports = logger;
+module.exports.logger = logger;
+module.exports.asyncHandler = asyncHandler;
+module.exports.AppError = AppError;
+module.exports.sanitize = sanitize;
+module.exports.SENSITIVE_FIELDS = SENSITIVE_FIELDS;

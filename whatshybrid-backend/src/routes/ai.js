@@ -12,7 +12,12 @@ const db = require('../utils/database');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
 const { authenticate } = require('../middleware/auth');
 const { makeLikeTerm } = require('../utils/sql-helpers');
-const { aiLimiter, aiCompletionLimiter } = require('../middleware/rateLimiter');
+// v9.5.0 BUG #137: `aiCompletionLimiter` nunca foi exportado por rateLimiter.js.
+// Em v9.4.7 era importado e passado como middleware → undefined → Express
+// quebrava no boot ("Route.post() requires a callback function but got Undefined").
+// Reusamos `aiLimiter` que tem semântica equivalente (20/min por workspace).
+const { aiLimiter } = require('../middleware/rateLimiter');
+const aiCompletionLimiter = aiLimiter;
 const logger = require('../utils/logger');
 
 const PROVIDERS = {

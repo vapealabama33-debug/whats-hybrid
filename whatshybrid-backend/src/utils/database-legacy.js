@@ -639,7 +639,11 @@ CREATE INDEX IF NOT EXISTS idx_ai_requests_workspace ON ai_requests(workspace_id
 CREATE INDEX IF NOT EXISTS idx_contacts_ws_created ON contacts(workspace_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_deals_ws_created ON deals(workspace_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_conv_created ON messages(conversation_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_jobs_ws_status ON scheduled_jobs(workspace_id, status, next_run_at);
+-- v9.5.0 BUG #153: idx_jobs_ws_status referenciava workspace_id mas
+-- scheduled_jobs não tem essa coluna. CREATE INDEX falhava → SCHEMA exec
+-- abortava o resto. Substituído por índice em (status, next_run_at) que
+-- é o que JobsRunner.processJobs usa pra buscar próximos jobs.
+CREATE INDEX IF NOT EXISTS idx_jobs_status_nextrun ON scheduled_jobs(status, next_run_at);
 CREATE INDEX IF NOT EXISTS idx_tasks_ws_status_due ON tasks(workspace_id, status, due_date);
 CREATE INDEX IF NOT EXISTS idx_ai_requests_ws_created ON ai_requests(workspace_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_analytics_ws_created ON analytics_events(workspace_id, created_at DESC);
@@ -804,48 +808,11 @@ function runMigrations(db) {
     logger.warn(`[DB] Migration warning (login_attempts): ${err.message}`);
   }
 
-  // ── webhook_inbox: garantir UNIQUE (provider, provider_event_id) (v9.3.4) ──
-  // Bug que isso resolve: MP retransmite webhook se cliente não responder 200 rápido.
-  // Sem UNIQUE, INSERT duplica → processa pagamento 2x → cliente cobrado 2x.
-  // Stripe já é idempotente porque catch trata erro UNIQUE — mas o índice atual
-  // é apenas pra busca, não pra UNIQUE constraint.
-  try {
-    // SQLite não suporta ALTER TABLE ADD UNIQUE — precisa via novo índice UNIQUE
-    db.exec(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_webhook_inbox_unique_event
-      ON webhook_inbox(provider, provider_event_id)
-      WHERE provider_event_id IS NOT NULL
-    `);
-  } catch (err) {
-    logger.warn(`[DB] Migration warning (webhook_inbox UNIQUE): ${err.message}`);
-  }
-
-  // ── billing_invoices: UNIQUE (provider, provider_ref) (v9.3.9) ──
-  // Bug que isso resolve: webhook handlers usavam INSERT OR IGNORE confiando que
-  // ON CONFLICT iria ignorar duplicatas, mas o índice (provider, provider_ref)
-  // era de busca, não UNIQUE → invoice duplicada criada → cobrança contábil errada.
-  try {
-    db.exec(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_invoices_unique_provider_ref
-      ON billing_invoices(provider, provider_ref)
-      WHERE provider_ref IS NOT NULL
-    `);
-  } catch (err) {
-    logger.warn(`[DB] Migration warning (billing_invoices UNIQUE): ${err.message}`);
-  }
-
-  // ── token_transactions: UNIQUE (workspace_id, invoice_id, type) (v9.3.9) ──
-  // Defense em camada DB pra idempotência de credit() — caso aplicação esqueça
-  // a check, banco rejeita duplicata.
-  try {
-    db.exec(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_token_transactions_unique_invoice
-      ON token_transactions(workspace_id, invoice_id, type)
-      WHERE invoice_id IS NOT NULL
-    `);
-  } catch (err) {
-    logger.warn(`[DB] Migration warning (token_transactions UNIQUE): ${err.message}`);
-  }
+  // v9.5.0 BUG #152: índices UNIQUE pra webhook_inbox/billing_invoices/
+  // token_transactions foram movidos PRA DENTRO dos blocos CREATE TABLE
+  // logo abaixo. Antes existiam aqui isolados e falhavam silenciosamente
+  // na primeira run (tabela ainda não existia) e ficavam pendentes pra 2ª
+  // run — quebrando idempotência (211 → 214 objetos diff).
 
   // ── ai_feedback: tabela pra fechamento do loop de aprendizado (v9.4.0) ──
   // Bug que isso resolve: extensão chamava POST /api/v1/ai/learn/feedback há muito,
@@ -1067,6 +1034,10 @@ function runMigrations(db) {
       CREATE INDEX IF NOT EXISTS idx_billing_invoices_workspace ON billing_invoices(workspace_id);
       CREATE INDEX IF NOT EXISTS idx_billing_invoices_status ON billing_invoices(status);
       CREATE INDEX IF NOT EXISTS idx_billing_invoices_provider_ref ON billing_invoices(provider, provider_ref);
+      -- v9.3.9 / v9.5.0 BUG #152: UNIQUE pra idempotência cross-driver.
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_invoices_unique_provider_ref
+        ON billing_invoices(provider, provider_ref)
+        WHERE provider_ref IS NOT NULL;
     `);
   } catch (err) {
     logger.warn(`[DB] Migration warning (billing_invoices): ${err.message}`);
@@ -1100,29 +1071,32 @@ function runMigrations(db) {
     // Detecta se a coluna ainda existe
     const cols = db.prepare("PRAGMA table_info(workspaces)").all().map(c => c.name);
     if (cols.includes('credits')) {
-      const candidates = db.all(`
+      // v9.5.0 BUG #151: db.all(sql) é API do wrapper async; aqui `db` é raw
+      // better-sqlite3 (recebido via runMigrations(getDb())). Use prepare().all().
+      const candidates = db.prepare(`
         SELECT w.id, w.credits
         FROM workspaces w
         LEFT JOIN workspace_credits wc ON wc.workspace_id = w.id
         WHERE w.credits > 0 AND wc.workspace_id IS NULL
-      `);
+      `).all();
       let migrated = 0;
+      const insertCredits = db.prepare(
+        `INSERT INTO workspace_credits (workspace_id, tokens_total, tokens_used, last_topup_at)
+         VALUES (?, ?, 0, CURRENT_TIMESTAMP)`
+      );
+      const insertTxn = db.prepare(
+        `INSERT INTO token_transactions
+         (id, workspace_id, type, amount, balance_after, description, metadata, created_at)
+         VALUES (?, ?, 'adjustment', ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+      );
+      const { v4: uuidv4 } = require('./uuid-wrapper');
       for (const ws of candidates) {
         try {
-          db.run(
-            `INSERT INTO workspace_credits (workspace_id, tokens_total, tokens_used, last_topup_at)
-             VALUES (?, ?, 0, CURRENT_TIMESTAMP)`,
-            [ws.id, ws.credits]
-          );
-          // Audit trail
-          const { v4: uuidv4 } = require('./uuid-wrapper');
-          db.run(
-            `INSERT INTO token_transactions
-             (id, workspace_id, type, amount, balance_after, description, metadata, created_at)
-             VALUES (?, ?, 'adjustment', ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-            [uuidv4(), ws.id, ws.credits, ws.credits,
-             'v9.4.6 migration: consolidated workspaces.credits → workspace_credits',
-             JSON.stringify({ migration: 'v9.4.6_credits_consolidation', original_value: ws.credits })]
+          insertCredits.run(ws.id, ws.credits);
+          insertTxn.run(
+            uuidv4(), ws.id, ws.credits, ws.credits,
+            'v9.4.6 migration: consolidated workspaces.credits → workspace_credits',
+            JSON.stringify({ migration: 'v9.4.6_credits_consolidation', original_value: ws.credits })
           );
           migrated++;
         } catch (e) {
@@ -1141,17 +1115,20 @@ function runMigrations(db) {
   // Backend-Only AI desde v9.4.0. Cliente nunca configurou key, mas se houver
   // valor antigo salvo, removemos pra não vazar via /workspace endpoint.
   try {
-    const stale = db.all(`
+    // v9.5.0 BUG #151: idem credits — db é raw better-sqlite3.
+    const stale = db.prepare(`
       SELECT id FROM workspaces WHERE settings LIKE '%aiKeys%'
-    `);
+    `).all();
     let cleaned = 0;
+    const getSettings = db.prepare('SELECT settings FROM workspaces WHERE id = ?');
+    const updateSettings = db.prepare('UPDATE workspaces SET settings = ? WHERE id = ?');
     for (const ws of stale) {
       try {
-        const row = db.get('SELECT settings FROM workspaces WHERE id = ?', [ws.id]);
+        const row = getSettings.get(ws.id);
         const s = JSON.parse(row?.settings || '{}');
         if (s.aiKeys) {
           delete s.aiKeys;
-          db.run('UPDATE workspaces SET settings = ? WHERE id = ?', [JSON.stringify(s), ws.id]);
+          updateSettings.run(JSON.stringify(s), ws.id);
           cleaned++;
         }
       } catch (_) {}
@@ -1188,6 +1165,10 @@ function runMigrations(db) {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_token_tx_idem
         ON token_transactions(workspace_id, ai_request_id)
         WHERE type = 'consume' AND ai_request_id IS NOT NULL;
+      -- v9.3.9 / v9.5.0 BUG #152: UNIQUE pra idempotência por invoice (defense em camada DB).
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_token_transactions_unique_invoice
+        ON token_transactions(workspace_id, invoice_id, type)
+        WHERE invoice_id IS NOT NULL;
     `);
   } catch (err) {
     logger.warn(`[DB] Migration warning (token_transactions): ${err.message}`);
@@ -1243,6 +1224,10 @@ function runMigrations(db) {
       );
       CREATE INDEX IF NOT EXISTS idx_webhook_inbox_status ON webhook_inbox(status, received_at);
       CREATE INDEX IF NOT EXISTS idx_webhook_inbox_provider_event ON webhook_inbox(provider, provider_event_id);
+      -- v9.3.4 / v9.5.0 BUG #152: UNIQUE pra impedir cobrança duplicada via replay de MP.
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_webhook_inbox_unique_event
+        ON webhook_inbox(provider, provider_event_id)
+        WHERE provider_event_id IS NOT NULL;
     `);
   } catch (err) {
     logger.warn(`[DB] Migration warning (webhook_inbox): ${err.message}`);
@@ -1397,4 +1382,6 @@ module.exports = {
   exec,
   runMultiple,
   saveDatabase, // no-op para compatibilidade
+  runMigrations,
+  SCHEMA, // v9.5.0 BUG #148: exposto pra wrapper aplicar em runMigrations()
 };

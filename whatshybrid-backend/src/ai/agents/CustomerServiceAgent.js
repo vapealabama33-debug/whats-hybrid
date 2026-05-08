@@ -7,7 +7,7 @@
  */
 
 const AIRouter = require('../services/AIRouterService');
-const logger = require('../utils/logger');
+const logger = require('../../utils/logger');
 const PromptManager = require('../prompts/PromptManager');
 
 // Agent states
