@@ -1,0 +1,373 @@
+/**
+ * 📄 Document Importer - Importação Inteligente de Documentos
+ * Processa PDF, CSV, TXT e extrai conhecimento automaticamente
+ * 
+ * @version 1.0.0
+ */
+
+class DocumentImporter {
+  constructor() {
+    this.supportedFormats = ['pdf', 'csv', 'txt', 'json', 'xlsx'];
+    this.processingQueue = [];
+    this.results = [];
+  }
+
+  // ============================================
+  // PROCESSAMENTO DE ARQUIVOS
+  // ============================================
+
+  /**
+   * Processa um arquivo e extrai conhecimento
+   * @param {File} file - Arquivo a ser processado
+   * @returns {Promise<Object>} Resultado do processamento
+   */
+  async processFile(file) {
+    const extension = file.name.split('.').pop().toLowerCase();
+    
+    if (!this.supportedFormats.includes(extension)) {
+      throw new Error(`Formato não suportado: ${extension}`);
+    }
+
+    console.log(`[DocumentImporter] Processando: ${file.name}`);
+
+    let result;
+    switch (extension) {
+      case 'csv':
+        result = await this.processCSV(file);
+        break;
+      case 'txt':
+        result = await this.processTXT(file);
+        break;
+      case 'json':
+        result = await this.processJSON(file);
+        break;
+      case 'pdf':
+        result = await this.processPDF(file);
+        break;
+      default:
+        throw new Error(`Processador não implementado para: ${extension}`);
+    }
+
+    this.results.push({
+      filename: file.name,
+      ...result,
+      processedAt: Date.now()
+    });
+
+    return result;
+  }
+
+  /**
+   * Processa arquivo CSV (produtos, preços, FAQs)
+   */
+  async processCSV(file) {
+    const text = await file.text();
+    const lines = text.split('\n').filter(l => l.trim());
+    
+    if (lines.length < 2) {
+      return { type: 'empty', items: [] };
+    }
+
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const items = [];
+
+    // Detectar tipo de CSV
+    const isProducts = headers.some(h => ['produto', 'product', 'nome', 'name', 'preco', 'price'].includes(h));
+    const isFaqs = headers.some(h => ['pergunta', 'question', 'resposta', 'answer'].includes(h));
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = this.parseCSVLine(lines[i]);
+      if (values.length < headers.length) continue;
+
+      const item = {};
+      headers.forEach((h, idx) => {
+        item[h] = values[idx]?.trim() || '';
+      });
+
+      if (isProducts) {
+        items.push(this.normalizeProduct(item));
+      } else if (isFaqs) {
+        items.push(this.normalizeFaq(item));
+      } else {
+        items.push(item);
+      }
+    }
+
+    return {
+      type: isProducts ? 'products' : (isFaqs ? 'faqs' : 'data'),
+      items,
+      count: items.length
+    };
+  }
+
+  /**
+   * Parse de linha CSV considerando aspas
+   */
+  parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let char of line) {
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        result.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current);
+
+    return result;
+  }
+
+  /**
+   * Normaliza produto extraído
+   */
+  normalizeProduct(item) {
+    return {
+      id: Date.now() + Math.random(),
+      name: item.nome || item.name || item.produto || item.product || '',
+      description: item.descricao || item.description || item.desc || '',
+      price: parseFloat(item.preco || item.price || item.valor || 0),
+      promoPrice: parseFloat(item.promo || item.promocao || item.promo_price || 0) || null,
+      category: item.categoria || item.category || item.cat || '',
+      sku: item.sku || item.codigo || item.code || '',
+      availability: item.disponibilidade || item.availability || 'available',
+      info: item.info || item.observacao || item.obs || ''
+    };
+  }
+
+  /**
+   * Normaliza FAQ extraída
+   */
+  normalizeFaq(item) {
+    return {
+      id: Date.now() + Math.random(),
+      q: item.pergunta || item.question || item.q || '',
+      a: item.resposta || item.answer || item.a || '',
+      keywords: (item.keywords || item.tags || '').split(',').map(k => k.trim()).filter(k => k)
+    };
+  }
+
+  /**
+   * Processa arquivo TXT (FAQ, documentação)
+   */
+  async processTXT(file) {
+    const text = await file.text();
+    const items = [];
+
+    // Detectar formato Q&A (pergunta: resposta)
+    const qaPattern = /(?:^|\n)(?:P:|Q:|Pergunta:|Question:)\s*(.+?)(?:\n)(?:R:|A:|Resposta:|Answer:)\s*(.+?)(?=\n(?:P:|Q:|Pergunta:|Question:)|\n\n|$)/gis;
+    
+    let match;
+    while ((match = qaPattern.exec(text)) !== null) {
+      items.push({
+        id: Date.now() + Math.random(),
+        q: match[1].trim(),
+        a: match[2].trim(),
+        keywords: []
+      });
+    }
+
+    // Se não encontrou Q&A, extrair parágrafos como conhecimento
+    if (items.length === 0) {
+      const paragraphs = text.split(/\n\n+/).filter(p => p.trim().length > 50);
+      
+      return {
+        type: 'knowledge',
+        items: paragraphs.map(p => ({
+          id: Date.now() + Math.random(),
+          content: p.trim(),
+          type: 'paragraph'
+        })),
+        count: paragraphs.length
+      };
+    }
+
+    return {
+      type: 'faqs',
+      items,
+      count: items.length
+    };
+  }
+
+  /**
+   * Processa arquivo JSON
+   */
+  async processJSON(file) {
+    const text = await file.text();
+    const data = JSON.parse(text);
+
+    // Detectar estrutura
+    if (Array.isArray(data)) {
+      const sample = data[0] || {};
+      
+      if (sample.name || sample.nome || sample.product) {
+        return {
+          type: 'products',
+          items: data.map(item => this.normalizeProduct(item)),
+          count: data.length
+        };
+      }
+      
+      if (sample.q || sample.question || sample.pergunta) {
+        return {
+          type: 'faqs',
+          items: data.map(item => this.normalizeFaq(item)),
+          count: data.length
+        };
+      }
+
+      if (sample.input || sample.user) {
+        return {
+          type: 'examples',
+          items: data.map(item => ({
+            id: Date.now() + Math.random(),
+            input: item.input || item.user || '',
+            output: item.output || item.response || item.assistant || '',
+            category: item.category || 'geral',
+            quality: item.quality || 8,
+            tags: item.tags || []
+          })),
+          count: data.length
+        };
+      }
+    }
+
+    // Estrutura de objeto único
+    if (data.products) {
+      return { type: 'products', items: data.products, count: data.products.length };
+    }
+    if (data.faqs) {
+      return { type: 'faqs', items: data.faqs, count: data.faqs.length };
+    }
+    if (data.examples) {
+      return { type: 'examples', items: data.examples, count: data.examples.length };
+    }
+
+    return { type: 'unknown', items: [data], count: 1 };
+  }
+
+  /**
+   * Processa PDF (extração básica de texto)
+   */
+  async processPDF(file) {
+    // PDF.js seria necessário para processamento real
+    // Por ora, retornamos instrução
+    console.warn('[DocumentImporter] PDF requer biblioteca PDF.js');
+    
+    return {
+      type: 'pdf',
+      items: [],
+      count: 0,
+      message: 'Para processar PDFs, instale a biblioteca PDF.js',
+      requiresLibrary: true
+    };
+  }
+
+  // ============================================
+  // EXTRAÇÃO INTELIGENTE
+  // ============================================
+
+  /**
+   * Extrai entidades de texto (preços, datas, emails, telefones)
+   */
+  extractEntities(text) {
+    const entities = {
+      prices: [],
+      emails: [],
+      phones: [],
+      dates: [],
+      urls: []
+    };
+
+    // Preços
+    const pricePattern = /R\$\s*[\d.,]+|[\d.,]+\s*reais/gi;
+    entities.prices = (text.match(pricePattern) || []).map(p => p.trim());
+
+    // Emails
+    const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+    entities.emails = text.match(emailPattern) || [];
+
+    // Telefones
+    const phonePattern = /(?:\+55\s?)?(?:\(?\d{2}\)?[\s.-]?)?\d{4,5}[\s.-]?\d{4}/g;
+    entities.phones = text.match(phonePattern) || [];
+
+    // URLs
+    const urlPattern = /https?:\/\/[^\s]+/g;
+    entities.urls = text.match(urlPattern) || [];
+
+    return entities;
+  }
+
+  /**
+   * Gera sugestões de FAQs a partir de texto
+   */
+  suggestFaqsFromText(text) {
+    const suggestions = [];
+    
+    // Padrões comuns de FAQ
+    const patterns = [
+      { regex: /(?:como|how)\s+(?:fazer|posso|to)\s+(.+?)\?/gi, type: 'how_to' },
+      { regex: /(?:qual|what)\s+(?:é|is)\s+(.+?)\?/gi, type: 'what_is' },
+      { regex: /(?:quanto|how much)\s+(?:custa|costs?)\s+(.+?)\?/gi, type: 'price' },
+      { regex: /(?:onde|where)\s+(?:fica|está|is)\s+(.+?)\?/gi, type: 'location' },
+      { regex: /(?:quando|when)\s+(.+?)\?/gi, type: 'time' }
+    ];
+
+    patterns.forEach(({ regex, type }) => {
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        suggestions.push({
+          question: match[0],
+          topic: match[1].trim(),
+          type
+        });
+      }
+    });
+
+    return suggestions;
+  }
+
+  // ============================================
+  // RESULTADOS
+  // ============================================
+
+  getResults() {
+    return [...this.results];
+  }
+
+  clearResults() {
+    this.results = [];
+  }
+
+  /**
+   * Obtém estatísticas do processamento
+   */
+  getStats() {
+    const stats = {
+      totalFiles: this.results.length,
+      products: 0,
+      faqs: 0,
+      examples: 0,
+      knowledge: 0
+    };
+
+    this.results.forEach(r => {
+      if (r.type === 'products') stats.products += r.count;
+      if (r.type === 'faqs') stats.faqs += r.count;
+      if (r.type === 'examples') stats.examples += r.count;
+      if (r.type === 'knowledge') stats.knowledge += r.count;
+    });
+
+    return stats;
+  }
+}
+
+// Exportar
+window.DocumentImporter = DocumentImporter;
+window.documentImporter = new DocumentImporter();
+console.log('[DocumentImporter] ✅ Módulo de importação de documentos carregado');
