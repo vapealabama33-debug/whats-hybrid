@@ -248,14 +248,37 @@
       // Limita número de exemplos (remove menos utilizados)
       if (this.examples.length > MAX_EXAMPLES) {
         const beforeLen = this.examples.length;
-        this.examples.sort((a, b) => {
-          // v9.5.2: Quality weighted in pruning — edited examples (quality 10) survive over old much-used ones.
+        // v9.5.4: Per-category cap to preserve topic diversity. Without this, 50 "preço" examples
+        // can crowd out "entrega"/"garantia"/"cancelamento" entirely. Each category keeps top-15
+        // by score; survivors compete globally for remaining slots.
+        const MAX_PER_CATEGORY = 15;
+        const sortByScore = (a, b) => {
           const qa = (Number(a.quality) || 9) >= 10 ? 1.5 : 1.0;
           const qb = (Number(b.quality) || 9) >= 10 ? 1.5 : 1.0;
-          const scoreA = (a.score * qa) + (a.usageCount * 0.05);
-          const scoreB = (b.score * qb) + (b.usageCount * 0.05);
-          return scoreB - scoreA;
-        });
+          return ((b.score * qb) + (b.usageCount * 0.05)) - ((a.score * qa) + (a.usageCount * 0.05));
+        };
+        const grouped = new Map();
+        for (const ex of this.examples) {
+          const cat = ex.category || 'Geral';
+          if (!grouped.has(cat)) grouped.set(cat, []);
+          grouped.get(cat).push(ex);
+        }
+        const survivors = [];
+        const remainder = [];
+        for (const [, list] of grouped) {
+          list.sort(sortByScore);
+          survivors.push(...list.slice(0, MAX_PER_CATEGORY));
+          remainder.push(...list.slice(MAX_PER_CATEGORY));
+        }
+        if (survivors.length >= MAX_EXAMPLES) {
+          survivors.sort(sortByScore);
+          this.examples = survivors.slice(0, MAX_EXAMPLES);
+        } else {
+          remainder.sort(sortByScore);
+          this.examples = [...survivors, ...remainder.slice(0, MAX_EXAMPLES - survivors.length)];
+        }
+        // Keep the original sort behavior afterwards so other code sees ranked order.
+        this.examples.sort(sortByScore);
 
         this.examples = this.examples.slice(0, MAX_EXAMPLES);
         if (WHL_DEBUG) console.log('[FewShotLearning] Limite de exemplos atingido, removendo menos utilizados');

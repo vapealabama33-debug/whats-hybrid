@@ -182,6 +182,18 @@
           correction: feedback.correction,
           rating: record.rating
         });
+        // v9.5.4: Also emit successfulInteraction for autonomous-learning to consume.
+        // The autonomous-learning module's listener was previously dormant for two reasons:
+        // (1) wrong bus name (fixed in v9.5.3), (2) no emitter (fixed here).
+        if (record.rating >= 4) {
+          window.EventBus.emit('successfulInteraction', {
+            input: feedback.messagePattern || feedback.input || '',
+            output: feedback.correction || feedback.originalResponse || '',
+            intent: feedback.intent,
+            rating: record.rating,
+            timestamp: Date.now()
+          });
+        }
       }
       
       // Calcular reward e retornar

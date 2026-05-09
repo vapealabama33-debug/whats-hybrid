@@ -91,9 +91,53 @@
           
           console.log('[AI-010] ✅ Cache invalidation listeners registered');
         }
-        
+
+        // v9.5.4: Pre-warm cache with the highest-quality few-shot examples so the first time a
+        // similar question arrives we hit cache (<50ms) instead of round-tripping to AI (2-5s).
+        this._prewarmFromFewShot();
+
       } catch (error) {
         console.error('[AIResponseCache] Erro ao inicializar:', error);
+      }
+    }
+
+    // v9.5.4: Pre-warm helper. Pulls top edited (quality 10) examples from few-shot learning
+    // and seeds the cache with them. Runs after init, fire-and-forget.
+    _prewarmFromFewShot() {
+      try {
+        const fsl = window.fewShotLearning;
+        if (!fsl || typeof fsl.getAll !== 'function') return;
+        // Wait until FSL is initialized (it auto-inits on load).
+        const seed = () => {
+          const examples = fsl.getAll() || [];
+          if (!examples.length) return;
+          // Top 10 by quality + usageCount, edited examples first.
+          const top = examples
+            .slice()
+            .sort((a, b) => {
+              const qa = (Number(a.quality) || 9) >= 10 ? 1.5 : 1.0;
+              const qb = (Number(b.quality) || 9) >= 10 ? 1.5 : 1.0;
+              return ((b.usageCount || 0) * qb) - ((a.usageCount || 0) * qa);
+            })
+            .slice(0, 10);
+          let seeded = 0;
+          for (const ex of top) {
+            const message = ex.input || ex.user;
+            const response = ex.output || ex.assistant;
+            if (!message || !response) continue;
+            // Use long TTL (7 days) so prewarmed entries survive longer than runtime cache.
+            try {
+              this.set(message, {}, response, ex.quality >= 10 ? 0.95 : 0.85, 7 * 24 * 60 * 60 * 1000);
+              seeded++;
+            } catch (_) {}
+          }
+          if (seeded > 0) console.log(`[AIResponseCache] 🔥 Prewarmed ${seeded} entries from few-shot examples`);
+        };
+        if (fsl.initialized) seed();
+        else if (window.EventBus) window.EventBus.on('few-shot:initialized', seed);
+        else setTimeout(seed, 1500);
+      } catch (e) {
+        console.warn('[AIResponseCache] Prewarm falhou (não crítico):', e?.message);
       }
     }
 

@@ -238,7 +238,7 @@
       // #19 FIX: Throttle snapshot creation (max 1 per 5 minutes)
       const now = Date.now();
       const timeSinceLastSnapshot = now - this.lastSnapshotTime;
-      
+
       if (timeSinceLastSnapshot > this.SNAPSHOT_THROTTLE_MS) {
         await this.createVersionSnapshot('Auto-save');
         this.lastSnapshotTime = now;
@@ -247,8 +247,97 @@
         const remainingMs = this.SNAPSHOT_THROTTLE_MS - timeSinceLastSnapshot;
         console.log(`[#19] ⏳ Snapshot throttled (${Math.round(remainingMs / 1000)}s remaining)`);
       }
-      
-      return this.saveKnowledge(this.knowledge);
+
+      const result = await this.saveKnowledge(this.knowledge);
+
+      // v9.5.4: Schedule RAG re-index (debounced) so semantic search reflects saved KB.
+      // If WHLLocalRAG isn't loaded yet, this is a silent no-op — KB still works without RAG.
+      this._scheduleRAGReindex();
+
+      return result;
+    }
+
+    // v9.5.4: RAG index integration ---------------------------------------------------
+    _scheduleRAGReindex() {
+      if (this._ragReindexTimer) clearTimeout(this._ragReindexTimer);
+      this._ragReindexTimer = setTimeout(() => { this.indexToRAG().catch(() => {}); }, 1500);
+    }
+
+    async indexToRAG() {
+      if (typeof window === 'undefined' || !window.WHLLocalRAG) return false;
+      try {
+        const rag = window.WHLLocalRAG;
+        if (!rag.initialized && typeof rag.init === 'function') {
+          await rag.init();
+        }
+        // Index FAQs (each Q+A as a single document, category 'faq')
+        const faqs = Array.isArray(this.knowledge.faq) ? this.knowledge.faq : [];
+        for (const faq of faqs) {
+          if (!faq?.question || !faq?.answer) continue;
+          const text = `Pergunta: ${faq.question}\nResposta: ${faq.answer}`;
+          if (text.length < 10) continue;
+          try {
+            await rag.addDocument({ text, category: 'faq', source: 'knowledge-base', metadata: { faqId: faq.id } });
+          } catch (_) { /* duplicate or other — RAG dedupes by content */ }
+        }
+        // Index products (name + description + price)
+        const products = Array.isArray(this.knowledge.products) ? this.knowledge.products : [];
+        for (const p of products) {
+          if (!p?.name) continue;
+          const parts = [p.name];
+          if (p.description) parts.push(p.description);
+          if (p.price > 0) parts.push(`R$ ${Number(p.price).toFixed(2)}`);
+          const text = parts.join(' — ');
+          if (text.length < 10) continue;
+          try {
+            await rag.addDocument({ text, category: 'product', source: 'knowledge-base', metadata: { productId: p.id } });
+          } catch (_) {}
+        }
+        console.log('[KnowledgeBase] ✅ Re-indexed to RAG:', faqs.length, 'FAQs +', products.length, 'products');
+        return true;
+      } catch (e) {
+        console.warn('[KnowledgeBase] indexToRAG falhou (não crítico):', e?.message);
+        return false;
+      }
+    }
+
+    /**
+     * v9.5.4: Query-aware prompt builder. When WHLLocalRAG is available, retrieves the top-K
+     * semantically relevant FAQs/products instead of stuffing top-N verbatim. Falls back to the
+     * regular buildSystemPrompt() when RAG isn't ready (cold-start, no embeddings yet).
+     */
+    async buildSystemPromptRAG(query, options = {}) {
+      const { topK = 5, minSimilarity = 0.45, persona = 'professional', businessContext = true } = options;
+      if (!query || typeof window === 'undefined' || !window.WHLLocalRAG?.initialized) {
+        return this.buildSystemPrompt({ persona, businessContext });
+      }
+      try {
+        const docs = await window.WHLLocalRAG.retrieve(query, { topK, minSimilarity });
+        if (!Array.isArray(docs) || docs.length === 0) {
+          return this.buildSystemPrompt({ persona, businessContext });
+        }
+        // Build the static parts (business + tone + policies) using buildSystemPrompt without FAQs/products,
+        // then append the retrieved relevant docs.
+        const baseFaqs = this.knowledge.faq;
+        const baseProducts = this.knowledge.products;
+        // Temporarily swap so buildSystemPrompt skips the verbatim dumps
+        this.knowledge.faq = [];
+        this.knowledge.products = [];
+        let prompt = this.buildSystemPrompt({ persona, businessContext });
+        this.knowledge.faq = baseFaqs;
+        this.knowledge.products = baseProducts;
+
+        prompt += '\nContexto relevante para esta mensagem (recuperado por similaridade semântica):\n';
+        docs.forEach((d, i) => {
+          const cat = d.metadata?.category === 'product' ? '[PRODUTO]' : '[FAQ]';
+          prompt += `${i + 1}. ${cat} ${d.text}\n`;
+        });
+        prompt += '\n';
+        return prompt;
+      } catch (e) {
+        console.warn('[KnowledgeBase] RAG retrieval falhou, usando prompt padrão:', e?.message);
+        return this.buildSystemPrompt({ persona, businessContext });
+      }
     }
 
     /**

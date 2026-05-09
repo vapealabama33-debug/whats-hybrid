@@ -292,6 +292,12 @@
 
     const systemParts = [baseRules];
 
+    // v9.5.4: Conversation-phase signal helps the model adjust tone (rapport vs closing).
+    if (state.conversationPhase) {
+      const cp = state.conversationPhase;
+      systemParts.push(`FASE DA CONVERSA: ${cp.phase} (${cp.count} mensagens trocadas).\nDicas: ${cp.hint}`);
+    }
+
     // Persona (se CopilotEngine estiver disponível)
     try {
       const persona = window.CopilotEngine?.getActivePersona?.();
@@ -316,7 +322,14 @@
 
       if (window.knowledgeBase && typeof window.knowledgeBase.buildSystemPrompt === 'function') {
         const personaId = window.CopilotEngine?.getActivePersona?.()?.id || 'professional';
-        const kbPrompt = safeText(window.knowledgeBase.buildSystemPrompt({ persona: personaId, businessContext: true }));
+        // v9.5.4: Use semantic retrieval (RAG) when available — pulls top-K relevant FAQs/products
+        // by embedding similarity instead of stuffing top-N verbatim. Falls back gracefully.
+        let kbPrompt;
+        if (typeof window.knowledgeBase.buildSystemPromptRAG === 'function') {
+          kbPrompt = safeText(await window.knowledgeBase.buildSystemPromptRAG(transcript || '', { persona: personaId, topK: 5 }));
+        } else {
+          kbPrompt = safeText(window.knowledgeBase.buildSystemPrompt({ persona: personaId, businessContext: true }));
+        }
         if (kbPrompt) {
           systemParts.push(`CONTEXTO DO NEGÓCIO (use como verdade):\n${kbPrompt}`);
           kbLoaded = true;
@@ -733,11 +746,26 @@
 
       const lastUserMsg = messages.filter(m => m.role === 'user').pop()?.content || '';
       let suggestion = null;
+      // v9.5.4: Track which tier produced the suggestion for observability/telemetry.
+      let tierUsed = null;
+      const tierStart = Date.now();
 
       // ChatKey consistente (id do WhatsApp quando disponível, senão título)
       const chatId = getActiveChatId();
       const chatKey = safeText(chatId) || safeText(getChatTitleFromDOM()) || 'active_chat';
       const transcript = buildTranscriptFromMessages(messages);
+
+      // v9.5.4: Conversation-phase signal. The model uses message count + last-customer-msg signals
+      // to decide between rapport, qualification, closing, post-sale tone.
+      const conversationPhase = (() => {
+        const count = messages.length;
+        if (count <= 2) return { phase: 'inicial', count, hint: 'cliente novo, foque em entender necessidade' };
+        if (count <= 8) return { phase: 'qualificacao', count, hint: 'descobrir intenção e contexto' };
+        if (count <= 20) return { phase: 'desenvolvimento', count, hint: 'apresentar valor, responder objeções' };
+        if (count <= 40) return { phase: 'fechamento', count, hint: 'cliente engajado, mover para decisão' };
+        return { phase: 'pos_engajamento', count, hint: 'manter relacionamento, evitar repetições' };
+      })();
+      state.conversationPhase = conversationPhase;
 
       // Atualizar memória rapidamente (não bloqueante)
       try {
@@ -804,6 +832,7 @@
 
           if (orchestrated?.success && orchestrated?.response) {
             suggestion = String(orchestrated.response).trim();
+            tierUsed = 'tier_0_backend_orchestrator';
 
             // Persistir interactionId para feedback loop funcionar
             // (recordFeedback usa este ID pra fechar o loop de aprendizado)
@@ -849,6 +878,7 @@
           const resp = await window.CopilotEngine.generateResponse(chatKey, analysis, { maxTokens: 260 });
           if (resp?.content) {
             suggestion = resp.content.trim();
+            tierUsed = 'tier_1_copilot_engine';
             log('✅ Sugestão via CopilotEngine (robusto)');
           }
         } catch (e) {
@@ -867,6 +897,7 @@
           });
           if (result?.content) {
             suggestion = result.content.trim();
+            tierUsed = 'tier_2_ai_service';
             log('✅ Sugestão via AIService (prompt robusto)');
           }
         } catch (e) {
@@ -880,6 +911,7 @@
           const result = window.SmartSuggestions.getSuggestion(lastUserMsg, messages);
           if (result?.text) {
             suggestion = result.text;
+            tierUsed = 'tier_3_smart_suggestions';
             log('✅ Sugestão via SmartSuggestions:', result.category);
           }
         } catch (e) {
@@ -898,6 +930,7 @@
           });
           if (result?.text) {
             suggestion = result.text.trim();
+            tierUsed = 'tier_4_backend_complete';
             log('✅ Sugestão via BackendClient');
           }
         } catch (e) {
@@ -923,8 +956,22 @@
         } else {
           // Nenhum provider configurado - usar fallback local (esperado)
           suggestion = generateFallbackSuggestion(lastUserMsg);
+          tierUsed = 'tier_5_local_fallback';
           log('✅ Sugestão via fallback local (sem providers configurados)');
         }
+      }
+
+      // v9.5.4: Emit tier observability event so operators can see Tier 0=85% / Tier 1=12% etc.
+      if (suggestion && tierUsed && window.EventBus) {
+        const latency = Date.now() - tierStart;
+        window.EventBus.emit('ai:tier:hit', {
+          tier: tierUsed,
+          latency,
+          chatKey,
+          phase: state.conversationPhase?.phase
+        });
+        state.lastTierUsed = tierUsed;
+        state.lastTierLatency = latency;
       }
 
       // v9.5.3: Apply safety filter (PII leak / blocked patterns / hallucination disclaimers)
@@ -944,6 +991,17 @@
             // Soft modification (disclaimer added) — use it.
             suggestion = safetyResult.modifiedResponse;
             log('ℹ️ Safety filter aplicou disclaimer (não bloqueou):', safetyResult.issues.map(i => i.type).join(', '));
+            // v9.5.4: Surface to user — they should know the system added a disclaimer.
+            try {
+              const types = safetyResult.issues.map(i => i.type);
+              const friendly = types.includes('sensitive_topic') ? 'Aviso adicionado (tópico sensível)'
+                : types.includes('potential_hallucination') ? 'Aviso adicionado (verificar informação)'
+                : types.includes('inappropriate_tone') ? 'Tom ajustado para mais empatia'
+                : 'Aviso adicionado automaticamente';
+              if (window.NotificationsModule?.toast) {
+                window.NotificationsModule.toast(`ℹ️ ${friendly}`, 'info', 2500);
+              }
+            } catch (_) {}
           }
         } catch (sfErr) {
           log('Safety filter erro (ignorando, prosseguindo):', sfErr?.message);

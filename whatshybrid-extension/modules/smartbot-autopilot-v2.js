@@ -14,7 +14,11 @@
     maxQueue: 50,
     processedKey: 'whl_autopilot_processed',
     useConfidenceSystem: true,  // Usar sistema de confiança
-    minConfidence: 70,          // Confiança mínima para auto-send
+    // v9.5.4: Raised from 70→85. Autopilot decisions are unsupervised (no human curation),
+    // so they need higher confidence than manual suggestions. 70 corresponded to "copilot" tier
+    // (human-in-the-loop); 85 sits between copilot and autonomous (≥90), which is the right
+    // band for "auto-send only when very confident, otherwise queue for review".
+    minConfidence: 85,          // Confiança mínima para auto-send
     requireCopilotMode: true,   // Requer modo copiloto ativo
 
     // Configuráveis via UI (autopilot-handlers.js)

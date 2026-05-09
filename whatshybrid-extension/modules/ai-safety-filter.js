@@ -29,6 +29,12 @@
           { pattern: /\b\d{4}[\s.-]?\d{4}[\s.-]?\d{4}[\s.-]?\d{4}\b/, type: 'credit_card' },
           { pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/, type: 'email' },
           { pattern: /\b(?:\+55\s?)?(?:\(?\d{2}\)?\s?)?\d{4,5}-?\d{4}\b/, type: 'phone_br' },
+          // v9.5.4: Brazilian-specific PII patterns added.
+          { pattern: /\b\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}\b/, type: 'CNPJ' },
+          { pattern: /\b\d{5}-?\d{3}\b(?!\d)/, type: 'CEP' },
+          { pattern: /\bag(?:ência|encia|\.)?\s*\d{3,5}[\s,.-]+\s*c(?:onta|c|\/)\.?\s*\d{4,12}/i, type: 'bank_account_br' },
+          // PIX random key (UUIDv4 format)
+          { pattern: /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i, type: 'pix_random_key' },
         ],
         sensitiveTopics: [
           'medical advice',

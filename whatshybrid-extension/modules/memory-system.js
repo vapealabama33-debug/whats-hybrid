@@ -1068,7 +1068,9 @@ Retorne APENAS o JSON, sem explicações adicionais.`;
   }
 
   // Debounce timer para auto-update
-  let autoUpdateDebounceTimer = null;
+  // v9.5.4: Per-chat debounce — was a single global timer, so switching chats faster than the
+  // debounce window dropped pending memory updates. Now keyed by chatKey so each chat owns its own.
+  const autoUpdateTimers = new Map();
 
   /**
    * Atualiza memória automaticamente com debounce
@@ -1185,13 +1187,15 @@ Retorne APENAS o JSON, sem explicações adicionais.`;
     }
 
     // Cancela timer anterior
-    if (autoUpdateDebounceTimer) {
-      clearTimeout(autoUpdateDebounceTimer);
+    // v9.5.4: cancel only the timer for this chatKey, not all timers globally.
+    if (autoUpdateTimers.has(chatKey)) {
+      clearTimeout(autoUpdateTimers.get(chatKey));
     }
 
     // Retorna promise que resolve após debounce
     return new Promise((resolve) => {
-      autoUpdateDebounceTimer = setTimeout(async () => {
+      const timerId = setTimeout(async () => {
+        autoUpdateTimers.delete(chatKey);
         try {
           if (WHL_DEBUG) console.log('[MemorySystem] Auto-update iniciado após debounce de', debounceMs, 'ms');
           
@@ -1220,6 +1224,7 @@ Retorne APENAS o JSON, sem explicações adicionais.`;
           resolve(false);
         }
       }, debounceMs);
+      autoUpdateTimers.set(chatKey, timerId);
     });
   }
 
