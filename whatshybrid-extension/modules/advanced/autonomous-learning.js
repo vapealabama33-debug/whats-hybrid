@@ -71,9 +71,12 @@
     }
 
     _setupEventListeners() {
-      if (window.WHLEventBus) {
-        window.WHLEventBus.on('successfulInteraction', d => this._captureLearning(d));
-        window.WHLEventBus.on('patternDetected', d => this._captureLearning(d));
+      // v9.5.3: BUS-FIX — was listening on window.WHLEventBus but production uses window.EventBus.
+      // Module was completely dead since it never received any events. Now correctly subscribed.
+      const bus = window.EventBus || window.WHLEventBus;
+      if (bus && typeof bus.on === 'function') {
+        bus.on('successfulInteraction', d => this._captureLearning(d));
+        bus.on('patternDetected', d => this._captureLearning(d));
       }
     }
 
@@ -240,8 +243,9 @@
         });
       }
 
-      if (window.WHLEventBus) {
-        window.WHLEventBus.emit('learningIntegrated', learning);
+      const bus = window.EventBus || window.WHLEventBus;
+      if (bus && typeof bus.emit === 'function') {
+        bus.emit('learningIntegrated', learning);
       }
 
       console.log('[AutonomousLearning] Integrated:', learning.id);

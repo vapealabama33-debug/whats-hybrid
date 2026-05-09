@@ -384,9 +384,15 @@
   }
 
   const dashboard = new RealtimeDashboard();
-  dashboard.init();
+  // v9.5.3: Gate auto-init behind opt-in flag. The dashboard had setInterval running every 5s in
+  // production with no UI consuming the data — pure CPU drain. To enable, set localStorage flag
+  // `whl_realtime_dashboard_enabled=true` or call `window.WHLRealtimeDashboard.init()` manually.
+  const enabled = (typeof localStorage !== 'undefined' && localStorage.getItem('whl_realtime_dashboard_enabled') === 'true');
+  if (enabled) {
+    dashboard.init();
+    console.log('[ADV-015] Realtime Dashboard initialized (opt-in flag set)');
+  }
 
   window.WHLRealtimeDashboard = dashboard;
-  console.log('[ADV-015] Realtime Dashboard initialized');
 
 })();

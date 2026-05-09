@@ -319,5 +319,10 @@
     module.exports = ResponseSafetyFilter;
   } else {
     window.ResponseSafetyFilter = ResponseSafetyFilter;
+    // v9.5.3: Auto-instantiate a default singleton so callers can use window.aiSafetyFilter.validate()
+    // without each one having to construct one. Config can still be overridden via window.aiSafetyFilter.config.
+    if (!window.aiSafetyFilter) {
+      window.aiSafetyFilter = new ResponseSafetyFilter();
+    }
   }
 })();

@@ -747,6 +747,17 @@
         }
       } catch (error) { try { globalThis.WHLLogger?.debug?.('[Suppressed]', error); } catch (_) {} }
 
+      // v9.5.3: Update ai-memory-advanced profile (style, topics, buying intent) on every suggestion.
+      // Previously only happened in CopilotEngine fallback path — primary backend path missed it,
+      // so customer profile data was effectively frozen for users on the active backend tier.
+      try {
+        if (window.aiMemoryAdvanced && typeof window.aiMemoryAdvanced.analyzeAndUpdateFromMessage === 'function' && lastUserMsg) {
+          // Fire-and-forget — must not block suggestion latency.
+          window.aiMemoryAdvanced.analyzeAndUpdateFromMessage(chatKey, lastUserMsg, true)
+            .catch(e => log('aiMemoryAdvanced update falhou:', e?.message));
+        }
+      } catch (error) { try { globalThis.WHLLogger?.debug?.('[Suppressed]', error); } catch (_) {} }
+
       const hasProviders = window.AIService?.getConfiguredProviders?.()?.length > 0;
 
       // v7.9.13: Garantir que a memória tenha chance de carregar antes de montar prompt robusto
@@ -913,6 +924,29 @@
           // Nenhum provider configurado - usar fallback local (esperado)
           suggestion = generateFallbackSuggestion(lastUserMsg);
           log('✅ Sugestão via fallback local (sem providers configurados)');
+        }
+      }
+
+      // v9.5.3: Apply safety filter (PII leak / blocked patterns / hallucination disclaimers)
+      // Defense-in-depth — Tier 0 backend has its own filter, this catches local-fallback paths.
+      if (suggestion && window.aiSafetyFilter && typeof window.aiSafetyFilter.validate === 'function') {
+        try {
+          const safetyResult = window.aiSafetyFilter.validate(suggestion, { intent: state.lastMetadata?.intent });
+          if (!safetyResult.safe) {
+            const highSev = safetyResult.issues.filter(i => i.severity === 'high');
+            log('⚠️ Sugestão bloqueada pelo safety filter:', highSev.map(i => i.type).join(', '));
+            if (window.EventBus) {
+              window.EventBus.emit('ai:safety:blocked', { issues: highSev });
+            }
+            // Hard block: don't show unsafe content. Use neutral fallback instead.
+            suggestion = generateFallbackSuggestion(lastUserMsg);
+          } else if (safetyResult.modifiedResponse && safetyResult.modifiedResponse !== suggestion) {
+            // Soft modification (disclaimer added) — use it.
+            suggestion = safetyResult.modifiedResponse;
+            log('ℹ️ Safety filter aplicou disclaimer (não bloqueou):', safetyResult.issues.map(i => i.type).join(', '));
+          }
+        } catch (sfErr) {
+          log('Safety filter erro (ignorando, prosseguindo):', sfErr?.message);
         }
       }
 
