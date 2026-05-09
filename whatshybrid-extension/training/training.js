@@ -1564,6 +1564,34 @@ class TrainingApp {
             this.examples.push(...result.items);
             await this.saveExamples();
             this.showToast(`${result.items.length} exemplos importados!`, 'success');
+          } else if (result.type === 'documents' && result.items.length > 0) {
+            // v9.5.8: PDF/free-form text chunks. Add to knowledge-base under
+            // `cannedReplies` so the RAG indexer (knowledge-base.js:indexToRAG)
+            // picks them up and they become semantically searchable in suggestions.
+            try {
+              const kbData = await chrome.storage.local.get('whl_knowledge_base');
+              const kb = kbData.whl_knowledge_base || {};
+              if (!Array.isArray(kb.cannedReplies)) kb.cannedReplies = [];
+              for (const doc of result.items) {
+                kb.cannedReplies.push({
+                  triggers: [doc.title || 'documento'],
+                  reply: doc.content,
+                  source: doc.source || 'pdf',
+                  sourceFile: doc.sourceFile || null,
+                  importedAt: Date.now(),
+                });
+              }
+              kb.lastUpdated = Date.now();
+              await chrome.storage.local.set({ whl_knowledge_base: kb });
+              // Trigger RAG re-index if knowledgeBase singleton is loaded.
+              if (window.knowledgeBase?.indexToRAG) {
+                window.knowledgeBase.indexToRAG().catch(() => {});
+              }
+              this.showToast(`${result.items.length} trechos de PDF adicionados à base de conhecimento!`, 'success');
+            } catch (e) {
+              console.error('[TrainingApp] Erro ao salvar documentos:', e);
+              this.showToast(`Erro ao salvar trechos do PDF`, 'error');
+            }
           }
 
           if (resultsDiv && resultsGrid) {

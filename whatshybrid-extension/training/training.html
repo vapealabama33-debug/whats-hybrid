@@ -404,8 +404,8 @@
                         <div class="upload-zone" id="uploadZone">
                             <div class="upload-icon">📁</div>
                             <p>Arraste arquivos aqui ou clique para selecionar</p>
-                            <span class="upload-formats">Formatos aceitos: CSV, TXT, JSON</span>
-                            <input type="file" id="fileInput" accept=".csv,.txt,.json" multiple hidden>
+                            <span class="upload-formats">Formatos aceitos: CSV, TXT, JSON, XLSX (Excel), ODS (LibreOffice), PDF</span>
+                            <input type="file" id="fileInput" accept=".csv,.txt,.json,.xlsx,.xls,.ods,.pdf" multiple hidden>
                         </div>
                         <div class="upload-queue" id="uploadQueue">
                             <!-- Arquivos na fila -->
@@ -622,6 +622,16 @@
     <script src="modules/ai-client.js"></script>
 
     <script src="simulation-engine.js"></script>
+
+    <!-- v9.5.8: SheetJS para XLSX/XLS/ODS (UMD — expõe window.XLSX) -->
+    <script src="../lib/xlsx.mini.min.js"></script>
+
+    <!-- v9.5.8: PDF.js (ES module) — carregado e exposto como window.pdfjsLib pelo wrapper abaixo -->
+    <script type="module">
+      import * as pdfjsLib from '../lib/pdf.min.mjs';
+      pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('lib/pdf.worker.min.mjs');
+      window.pdfjsLib = pdfjsLib;
+    </script>
 
     <!-- Training Modules (apenas os usados em runtime) -->
     <script src="modules/document-importer.js"></script>
