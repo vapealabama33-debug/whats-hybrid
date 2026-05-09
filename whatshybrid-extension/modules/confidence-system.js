@@ -262,8 +262,29 @@
         
         // Carrega log de eventos
         await this.loadEventLog();
-        
+
         this.initialized = true;
+
+        // v9.5.7: Auto-wire to feedback events. Until now, sendConfidenceFeedback had ZERO
+        // callers — the 40-point feedback component of the score was always 0, making the
+        // autopilot threshold (85) unreachable through legitimate use. Now we listen to the
+        // existing `feedback:received` and `successfulInteraction` events emitted by
+        // ai-feedback-system.js / suggestion-injector — score grows with positive interactions.
+        if (typeof window !== 'undefined' && window.EventBus) {
+          // ai-feedback-system emits this on every recorded feedback (rating 1-5).
+          window.EventBus.on('feedback:received', (data) => {
+            const type = data?.type === 'positive' ? 'good'
+                       : data?.type === 'negative' ? 'bad'
+                       : data?.correction ? 'correction'
+                       : null;
+            if (type) this.sendConfidenceFeedback(type, { source: 'feedback:received' }).catch(() => {});
+          });
+          // Strong positive signal — rating ≥ 4 + correction accepted.
+          window.EventBus.on('successfulInteraction', () => {
+            this.sendConfidenceFeedback('good', { source: 'successfulInteraction' }).catch(() => {});
+          });
+          console.log('[ConfidenceSystem] ✅ EventBus listeners attached (feedback growth wired)');
+        }
       } catch (error) {
         console.error('[ConfidenceSystem] Erro ao inicializar:', error);
       }
@@ -449,6 +470,14 @@
       await this.save();
 
       console.log('[ConfidenceSystem] Uso de sugestão registrado. Editada:', edited);
+    }
+
+    // v9.5.7: BUG FIX — suggestion-injector.js calls window.confidenceSystem.recordSuggestionUsed
+    // (without the "age" suffix). Optional chaining made the call a silent no-op since the
+    // method was never defined → 25-point usage component of the score was always 0 →
+    // autopilot threshold (85) was unreachable. Aliasing here keeps existing callers correct.
+    async recordSuggestionUsed(edited, metadata = {}) {
+      return this.recordSuggestionUsage(edited, metadata);
 
       // Envia para backend
       this.pushToBackend('suggestion_usage', { edited, metadata });
