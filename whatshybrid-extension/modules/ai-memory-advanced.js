@@ -693,13 +693,20 @@
 
     async syncWithBackend() {
       if (this.pendingSync.length === 0) return;
-      
+
       const batch = this.pendingSync.splice(0, 10);
-      
+
       try {
-        if (window.BackendClient?.syncClientProfiles) {
+        // v9.5.6: BackendClient.syncClientProfiles never existed (silent no-op since v9.4.x).
+        // Replaced with: rely on data-sync-manager pushing whl_ai_memory_advanced via the generic
+        // /api/v1/sync/ai_memory_advanced endpoint (registered in SYNC_MODULES). The pendingSync
+        // queue still serves as a "dirty flag" that data-sync-manager picks up on its next debounce.
+        if (window.DataSyncManager?.syncModule) {
+          await window.DataSyncManager.syncModule('ai_memory_advanced').catch(() => {});
+          if (WHL_DEBUG) console.log('[AIMemoryAdvanced] Marcado para sync via DataSyncManager:', batch.length, 'perfis');
+        } else if (window.BackendClient?.syncClientProfiles) {
+          // Legacy fallback (kept for the day someone implements the dedicated endpoint).
           await window.BackendClient.syncClientProfiles(batch);
-          if (WHL_DEBUG) console.log('[AIMemoryAdvanced] Sincronizados', batch.length, 'perfis');
         }
       } catch (e) {
         console.error('[AIMemoryAdvanced] Erro na sincronização:', e);

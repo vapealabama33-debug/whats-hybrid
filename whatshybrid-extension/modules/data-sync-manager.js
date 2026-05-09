@@ -79,6 +79,45 @@
         localKey: 'whl_settings',
         endpoint: '/api/v1/sync/settings',
         priority: 'low'
+      },
+      // v9.5.6: SaaS multi-device parity — these were local-only and got lost when the customer
+      // switched machines. All seven now sync via the generic sync_data endpoint, which means
+      // restoreFromBackend() pulls them on first login from a fresh device.
+      // Premise: "If the customer logged in, their data must be there. Period."
+      campaigns: {
+        localKey: 'whl_campaigns',
+        endpoint: '/api/v1/sync/campaigns',
+        priority: 'high'
+      },
+      campaign_alarms: {
+        localKey: 'whl_campaign_alarms',
+        endpoint: '/api/v1/sync/campaign_alarms',
+        priority: 'high'
+      },
+      conversation_memory: {
+        localKey: 'whl_conversation_memory',
+        endpoint: '/api/v1/sync/conversation_memory',
+        priority: 'medium'
+      },
+      conversation_memory_stats: {
+        localKey: 'whl_conversation_memory_stats',
+        endpoint: '/api/v1/sync/conversation_memory_stats',
+        priority: 'low'
+      },
+      training_stats: {
+        localKey: 'whl_training_stats',
+        endpoint: '/api/v1/sync/training_stats',
+        priority: 'low'
+      },
+      ai_memory_advanced: {
+        localKey: 'whl_ai_memory_advanced',
+        endpoint: '/api/v1/sync/ai_memory_advanced',
+        priority: 'medium'
+      },
+      smart_templates: {
+        localKey: 'whl_smart_templates',
+        endpoint: '/api/v1/sync/smart_templates',
+        priority: 'low'
       }
     }
   };
@@ -161,16 +200,42 @@
     // Configurar sync periódico
     setupPeriodicSync();
 
-    // Sincronizar dados do backend (restaurar se necessário)
+    // v9.5.6: Restore from backend BEFORE marking as initialized so any caller awaiting init()
+    // is guaranteed the local storage has all server-side data merged in. This is the SaaS
+    // multi-device guarantee: if you logged in, your data is here before any UI workflow starts.
     await restoreFromBackend();
 
     state.initialized = true;
-    console.log('[DataSyncManager] ✅ Inicializado');
+    state.restoredAt = Date.now();
+    console.log('[DataSyncManager] ✅ Inicializado e dados restaurados');
 
-    // Emitir evento de pronto
+    // Emitir evento de pronto + emitir o de restored separadamente para UIs que querem ouvir
+    // só a parte de restauração concluída.
     if (window.EventBus) {
       window.EventBus.emit('dataSync:ready', { modules: Object.keys(CONFIG.SYNC_MODULES) });
+      window.EventBus.emit('dataSync:restored', { modules: Object.keys(CONFIG.SYNC_MODULES), at: state.restoredAt });
     }
+  }
+
+  // v9.5.6: Public helper for UIs/workflows that must NOT operate on partial local data.
+  // Resolves immediately if already restored; otherwise waits for the dataSync:restored event
+  // (or rejects after timeout). Use before campaign sends, training stats display, etc.
+  function waitForRestored(timeoutMs = 15000) {
+    if (state.initialized && state.restoredAt) return Promise.resolve(true);
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('dataSync restore timeout')), timeoutMs);
+      const handler = () => { clearTimeout(timer); resolve(true); };
+      if (window.EventBus?.once) {
+        window.EventBus.once('dataSync:restored', handler);
+      } else if (window.EventBus?.on) {
+        window.EventBus.on('dataSync:restored', handler);
+      } else {
+        // Polling fallback
+        const poll = setInterval(() => {
+          if (state.initialized && state.restoredAt) { clearInterval(poll); clearTimeout(timer); resolve(true); }
+        }, 200);
+      }
+    });
   }
 
   // ============================================
@@ -724,7 +789,10 @@
   // ============================================
   window.DataSyncManager = {
     init,
-    
+
+    // v9.5.6: Multi-device readiness gate — block workflows on partial data
+    waitForRestored,
+
     // Sincronização
     syncModule,
     syncAll,
