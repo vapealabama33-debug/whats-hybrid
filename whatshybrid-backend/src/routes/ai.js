@@ -157,6 +157,24 @@ router.post('/complete', aiCompletionLimiter, authenticate, asyncHandler(async (
       [uuidv4(), req.workspaceId, 'ai:completion', JSON.stringify({ provider, model: requestBody.model, tokens: usage, latency, requestId: safeRequestId }), req.userId]
     );
 
+    // v9.5.5: Per-request economic log (provider, model, tokens, latency, USD cost).
+    // Fire-and-forget — never block the AI response on a logging failure.
+    try {
+      const costLogger = require('../services/CostLoggerService');
+      costLogger.log({
+        workspaceId: req.workspaceId,
+        userId: req.userId,
+        requestId: safeRequestId,
+        provider,
+        model: requestBody.model,
+        promptTokens: usage?.prompt_tokens || 0,
+        completionTokens: usage?.completion_tokens || 0,
+        latencyMs: latency,
+        httpStatus: 200,
+        chatId: chatId || null,
+      });
+    } catch (_) { /* logged inside the service */ }
+
     res.json({
       content,
       provider,
@@ -215,6 +233,20 @@ router.get('/usage', authenticate, asyncHandler(async (req, res) => {
   });
 
   res.json({ usage: usage.slice(0, 100), summary });
+}));
+
+/**
+ * @route GET /api/v1/ai/costs/summary
+ * @desc v9.5.5 — Per-request economic summary (USD cost by provider/model/day).
+ * Replaces the lossy /usage endpoint that only had token counts. Each row in
+ * llm_cost_log has cost_usd computed at insert time using the current pricing
+ * table, so historical rows are honest about what the workspace was charged.
+ */
+router.get('/costs/summary', authenticate, asyncHandler(async (req, res) => {
+  const days = Math.min(parseInt(req.query.days, 10) || 30, 365);
+  const costLogger = require('../services/CostLoggerService');
+  const summary = costLogger.summarize(req.workspaceId, days);
+  res.json(summary);
 }));
 
 /**

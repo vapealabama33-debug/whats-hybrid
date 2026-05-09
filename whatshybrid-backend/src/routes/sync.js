@@ -22,6 +22,72 @@ const logger = require('../utils/logger');
 router.use(authenticate);
 
 // ============================================
+// v9.5.5: AI MEMORY EVENTS (Leão pattern)
+// ============================================
+// Granular event log — companion to whole-blob sync. Stores individual events
+// (feedback, ai_tier_hit, assistant_picked, safety_blocked, …) in memory_events
+// table for cross-device continuity and event-level analytics.
+//
+// MUST come BEFORE the generic /:module handler so this path takes precedence.
+router.post('/ai_memory_events', asyncHandler(async (req, res) => {
+  const events = Array.isArray(req.body?.events) ? req.body.events : [];
+  if (!events.length) return res.json({ success: true, accepted: 0 });
+
+  const MAX_BATCH = 100;
+  const accepted = events.slice(0, MAX_BATCH);
+  let inserted = 0;
+  for (const evt of accepted) {
+    if (!evt?.type) continue;
+    try {
+      await db.run(
+        `INSERT INTO memory_events (id, workspace_id, user_id, event_type, payload, client_ts)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          uuidv4(),
+          req.user.workspaceId || req.workspaceId || req.user.id,
+          req.user.id,
+          String(evt.type).slice(0, 64),
+          JSON.stringify(evt.payload || {}),
+          Number(evt.ts) || Date.now(),
+        ]
+      );
+      inserted++;
+    } catch (e) {
+      logger.warn('[SyncRoutes] Falha ao inserir memory_event:', e?.message);
+    }
+  }
+  res.json({ success: true, accepted: inserted, dropped: events.length - inserted });
+}));
+
+router.get('/ai_memory_events', asyncHandler(async (req, res) => {
+  const since = parseInt(req.query.since, 10) || 0;
+  const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+  const eventType = req.query.type ? String(req.query.type).slice(0, 64) : null;
+  const workspaceId = req.user.workspaceId || req.workspaceId || req.user.id;
+
+  let sql = `SELECT id, event_type, payload, client_ts, created_at
+             FROM memory_events
+             WHERE workspace_id = ? AND client_ts >= ?`;
+  const args = [workspaceId, since];
+  if (eventType) {
+    sql += ' AND event_type = ?';
+    args.push(eventType);
+  }
+  sql += ' ORDER BY client_ts DESC LIMIT ?';
+  args.push(limit);
+
+  const rows = await db.all(sql, args);
+  const events = rows.map(r => ({
+    id: r.id,
+    type: r.event_type,
+    payload: (() => { try { return JSON.parse(r.payload); } catch (_) { return {}; } })(),
+    ts: r.client_ts,
+    createdAt: r.created_at,
+  }));
+  res.json({ success: true, events, count: events.length });
+}));
+
+// ============================================
 // TABELA DE SYNC
 // ============================================
 

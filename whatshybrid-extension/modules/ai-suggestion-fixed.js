@@ -298,6 +298,27 @@
       systemParts.push(`FASE DA CONVERSA: ${cp.phase} (${cp.count} mensagens trocadas).\nDicas: ${cp.hint}`);
     }
 
+    // v9.5.5: Specialized assistant routing — if customer message matches a known
+    // sales situation (offer/discount, objection/hesitation, recovery), inject the
+    // domain-specific playbook + 1-2 examples. Falls through silently when nothing matches.
+    let specialistPicked = null;
+    try {
+      if (window.WHLAssistants && typeof window.WHLAssistants.pickAssistant === 'function') {
+        const profile = window.aiMemoryAdvanced?.getProfile?.(chatId);
+        const picked = window.WHLAssistants.pickAssistant(transcript, lastUserMsg, profile);
+        if (picked) {
+          specialistPicked = picked;
+          systemParts.push(`ASSISTENTE ESPECIALIZADO ATIVADO: ${picked.name} (confiança ${Math.round(picked.confidence * 100)}%)\n${picked.promptAddition}`);
+          state.lastAssistantUsed = picked.id;
+          if (window.EventBus) {
+            window.EventBus.emit('ai:assistant:picked', { assistantId: picked.id, confidence: picked.confidence, chatId });
+          }
+        }
+      }
+    } catch (e) {
+      log('[Assistants] Erro ao escolher especialista:', e?.message);
+    }
+
     // Persona (se CopilotEngine estiver disponível)
     try {
       const persona = window.CopilotEngine?.getActivePersona?.();
@@ -358,6 +379,17 @@
     if (memText) systemParts.push(`MEMÓRIA deste contato:\n${memText}`);
 
     messages.push({ role: 'system', content: systemParts.filter(Boolean).join('\n\n') });
+
+    // v9.5.5: If a specialist matched, inject its 1-2 canned examples BEFORE the few-shot
+    // examples so the model strongly anchors on the playbook style for this turn.
+    if (specialistPicked && Array.isArray(specialistPicked.examples)) {
+      for (const ex of specialistPicked.examples.slice(0, 2)) {
+        if (ex?.user && ex?.assistant) {
+          messages.push({ role: 'user', content: safeText(ex.user) });
+          messages.push({ role: 'assistant', content: safeText(ex.assistant) });
+        }
+      }
+    }
 
     // Few-shot (exemplos) para coerência - COM VALIDAÇÃO E WARNING
     let fewShotLoaded = false;
